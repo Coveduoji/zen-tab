@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="monet" data-monet-hue="lavender">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — New Tab</title>
+<style>
+  /* System font stack — replaces Google Fonts (blocked by extension CSP) */
+  :root {
+    --mono: 'Courier New', Courier, monospace;
+    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+</style>
+<link rel="stylesheet" href="style.css">
+<script>
+  /* Anti-FOUC: read saved theme from localStorage before first paint */
+  (function() {
+    try {
+      var s = JSON.parse(localStorage.getItem('dash_v3'));
+      var th  = (s && s.settings && s.settings.theme)    || 'monet';
+      var hue = (s && s.settings && s.settings.monetHue) || 'lavender';
+      document.documentElement.setAttribute('data-theme', th);
+      if (th === 'monet') document.documentElement.setAttribute('data-monet-hue', hue);
+      else document.documentElement.removeAttribute('data-monet-hue');
+    } catch(e) {}
+  })();
+</script>
+</head>
+<body>
+<!-- BACKGROUND LAYERS -->
+<div id="bg-layer"></div>
+<div id="bg-overlay"></div>
+<input type="file" id="bg-file-input" accept="image/*" style="display:none">
+<div id="app">
+
+  <!-- FIXED SEARCH BAR -->
+  <div id="search-bar">
+    <div id="search-inner">
+      <div id="search-wrap">
+        <div id="eng-badge"><img id="eng-img" src="" alt=""><span class="eng-fb" id="eng-fb" style="display:none">G</span></div>
+        <div id="eng-switcher"></div>
+        <input id="search-input" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <button id="search-go" title="Search">→</button>
+    </div>
+  </div>
+
+  <!-- FAB HOVER ZONE -->
+  <div id="fab-hover-zone"></div>
+
+  <!-- FLOATING ACTION BUTTONS -->
+  <div id="fab-group">
+    <button class="fab" id="fab-add" title="Add Widget">
+      <span>＋</span>
+      <span class="fab-tooltip">添加组件</span>
+    </button>
+    <button class="fab" id="fab-settings" title="Settings">
+      <span>⚙</span>
+      <span class="fab-tooltip">设置</span>
+    </button>
+    <button class="fab" id="fab-theme" title="Toggle Theme">
+      <span>◑</span>
+      <span class="fab-tooltip">切换主题</span>
+    </button>
+    <button class="fab" id="fab-pure" title="Pure Mode">
+      <span>✦</span>
+      <span class="fab-tooltip">纯净模式</span>
+    </button>
+  </div>
+
+  <!-- PURE MODE OVERLAY -->
+  <div id="pure-overlay">
+    <div id="pure-esc">按 ESC 退出纯净模式</div>
+  </div>
+
+  <!-- TOP CLOCK -->
+  <div id="top-clock" aria-hidden="true">
+    <div id="top-clock-hm">00:00</div>
+    <div id="top-clock-date"></div>
+  </div>
+
+  <!-- RIGHT-CLICK CONTEXT MENU -->
+  <div id="ctx-menu">
+    <div class="ctx-item" id="ctx-edit"><span class="ctx-ico">✏️</span> <span id="ctx-edit-label">编辑</span></div>
+    <div class="ctx-item" id="ctx-link"><span class="ctx-ico">🔗</span> <span id="ctx-link-label">复制链接</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-front"><span class="ctx-ico">⬆</span> <span>移到最前</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" id="ctx-del"><span class="ctx-ico">🗑</span> <span>删除组件</span></div>
+  </div>
+
+  <!-- EDIT MODE BAR -->
+  <div id="edit-bar">
+    <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
+    <div id="edit-bar-actions">
+      <button class="edit-action-btn tidy" id="btn-tidy" data-i18n="tidy_btn"></button>
+      <button class="edit-action-btn done" id="btn-done" data-i18n="done_btn"></button>
+    </div>
+  </div>
+
+  <!-- HEADER spacer -->
+  <header id="header"></header>
+
+  <!-- GRID -->
+  <div id="grid-outer">
+    <div id="grid-canvas">
+      <div id="grid-bg"></div>
+      <div id="drop-ghost"></div>
+      <div id="empty-hint">
+        <div class="eh-ico">✦</div>
+        <div class="eh-t" data-i18n="empty_title"></div>
+        <div class="eh-s" data-i18n="empty_sub"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="theme-overlay"></div>
+  <div id="panel-overlay"></div>
+
+  <!-- MARKETPLACE -->
+  <div class="center-modal-bg" id="marketplace-bg">
+    <div id="marketplace" class="center-modal">
+      <div class="panel-hd">
+        <div class="panel-title">✦ <span data-i18n="widgets"></span></div>
+        <button class="panel-x" id="mkt-close">✕</button>
+      </div>
+      <div class="mkt-search-wrap"><input class="mkt-search" id="mkt-search" placeholder="搜索组件…" autocomplete="off"></div>
+      <div class="mkt-cats" id="mkt-cats"></div>
+      <div class="mkt-list" id="mkt-list"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="center-modal-bg" id="settings-bg">
+    <div id="settings-panel" class="center-modal">
+      <div class="panel-hd">
+        <div class="panel-title">⚙ <span data-i18n="settings"></span></div>
+        <button class="panel-x" id="settings-close">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;overscroll-behavior:contain" id="settings-body"></div>
+    </div>
+  </div>
+
+  <!-- CMD PALETTE -->
+  <div id="cmd-overlay">
+    <div id="cmd-box">
+      <div id="cmd-row">
+        <span id="cmd-ico">⌘</span>
+        <input id="cmd-input" type="text" autocomplete="off">
+      </div>
+      <div id="cmd-results"></div>
+    </div>
+  </div>
+
+  <!-- LINK MODAL -->
+  <div class="modal-bg" id="link-modal">
+    <div class="modal" style="width:440px">
+      <div class="modal-title">🔗 <span id="link-modal-title"></span></div>
+      <div class="lm-icon-row" id="lm-preview-row">
+        <div id="link-icon-preview"><span id="lip-emoji">🌐</span></div>
+        <div class="lm-icon-meta">
+          <div class="lm-icon-name" id="lm-preview-name">—</div>
+          <div class="lm-icon-host" id="lm-preview-host"></div>
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-lbl" data-i18n="link_name_label"></div>
+        <input class="modal-inp" id="link-name" autocomplete="off">
+      </div>
+      <div class="modal-field">
+        <div class="modal-lbl">URL <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.63rem;color:var(--text-dim)">— 自动补全 https://</span></div>
+        <input class="modal-inp" id="link-url" placeholder="github.com" autocomplete="off">
+      </div>
+      <div class="modal-field" id="lm-emoji-section">
+        <div class="modal-lbl" id="lm-emoji-lbl">自定义图标</div>
+        <div class="lm-emoji-row" id="lm-emoji-row"></div>
+      </div>
+      <div class="modal-field" id="lm-img-section">
+        <div class="modal-lbl" id="lm-img-lbl">自定义图片图标</div>
+        <div class="lm-img-upload" id="lm-img-upload">
+          <div class="lm-img-preview" id="lm-img-preview">
+            <span class="lm-img-empty-ico">🖼️</span>
+            <span class="lm-img-empty-txt" id="lm-img-empty-txt">点击上传图片</span>
+          </div>
+          <input type="file" id="lm-img-file" accept="image/*" style="display:none">
+          <button class="lm-img-clear" id="lm-img-clear" style="display:none">✕ 移除</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-danger" id="link-delete" style="display:none;margin-right:auto">🗑 <span id="link-delete-label"></span></button>
+        <button class="btn-s" id="link-cancel" data-i18n="cancel"></button>
+        <button class="btn-p" id="link-save" data-i18n="add_link_btn"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LONG PRESS RING -->
+  <div id="lp-ring">
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <circle id="lp-ring-track" cx="14" cy="14" r="11"/>
+      <circle id="lp-ring-fill"  cx="14" cy="14" r="11"/>
+    </svg>
+  </div>
+
+  <!-- CONFIRM DIALOG -->
+  <div id="confirm-overlay">
+    <div id="confirm-box">
+      <div class="cb-t" id="cb-title"></div>
+      <div class="cb-s" id="cb-sub"></div>
+      <div class="cb-row">
+        <button class="btn-s" id="cb-cancel"></button>
+        <button class="btn-p" id="cb-ok" style="background:var(--danger)"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     Script load order matters:
+     1. Utilities (no dependencies)
+     2. Layout engine + timer registry
+     3. State (depends on layout for clamp/compact)
+     4. Theme + background (depends on state)
+     5. UI modules (depend on state + layout + theme)
+     6. Widget definitions (depend on registry helpers)
+     7. Main entry (boots everything)
+     ═══════════════════════════════════════════ -->
+<script src="js/registry.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/state.js"></script>
+<script src="js/theme.js"></script>
+
+<!-- UI subsystems -->
+<script src="js/ui/toast.js"></script>
+<script src="js/ui/search.js"></script>
+<script src="js/ui/editmode.js"></script>
+<script src="js/ui/render.js"></script>
+<script src="js/ui/linkmodal.js"></script>
+<script src="js/ui/cmdpalette.js"></script>
+<script src="js/ui/puremode.js"></script>
+<script src="js/ui/settings.js"></script>
+<script src="js/ui/panels.js"></script>
+
+<!-- Widget definitions (register into REG) -->
+<script src="js/widgets/clock.js"></script>
+<script src="js/widgets/link.js"></script>
+<script src="js/widgets/notes.js"></script>
+<script src="js/widgets/todo.js"></script>
+<script src="js/widgets/weather.js"></script>
+<script src="js/widgets/gtrend.js"></script>
+<script src="js/widgets/pomodoro.js"></script>
+<script src="js/widgets/embed.js"></script>
+
+<!-- Entry point -->
+<script src="js/main.js"></script>
+</body>
+</html>
