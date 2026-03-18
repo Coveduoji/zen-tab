@@ -56,8 +56,6 @@ function closeCtxMenu() {
 const WD_ZH = ['周日','周一','周二','周三','周四','周五','周六'];
 const WD_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MO_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function tickClock() {} // legacy stub — top clock owns its own interval
-
 function initTopClock() {
   const hmEl   = document.getElementById('top-clock-hm');
   const dateEl = document.getElementById('top-clock-date');
@@ -69,14 +67,18 @@ function initTopClock() {
     if (dateEl) dateEl.textContent = lang==='zh' ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日` : `${WD_EN[n.getDay()]}, ${MO_EN[n.getMonth()]} ${n.getDate()}`;
   }
   tickTop();
-  const _clockId = setInterval(tickTop, 1000);
-  // Clean up on tab close to avoid accumulating intervals across hot reloads
+  let _clockId = setInterval(tickTop, 1000);
+  // Pause interval when tab is hidden; resume (with immediate tick) when visible again
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearInterval(_clockId); _clockId = null; }
+    else { tickTop(); _clockId = setInterval(tickTop, 1000); }
+  });
   window.addEventListener('beforeunload', () => clearInterval(_clockId), { once: true });
 }
 
 function setLang(l) {
   lang = l; state.settings.lang = l; saveState();
-  applyI18n(); tickClock();
+  applyI18n();
   if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
   if (document.getElementById('marketplace-bg')?.classList.contains('open')) renderMarket();
 }
