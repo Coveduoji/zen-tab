@@ -138,6 +138,13 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         const cached = weatherCache.load();
         if (cached) { showData(cached); return; }
       }
+      // Offline: show stale cache or a brief message — don't attempt network
+      if (!navigator.onLine) {
+        const stale = weatherCache.loadStale();
+        if (stale) { showData(stale); return; }
+        showMsg(lang === 'zh' ? '⚡ 离线' : '⚡ Offline');
+        return;
+      }
       showMsg(t('weather_loading'));
 
       function doFetch(la, lo) {
@@ -181,7 +188,8 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         _weatherPos = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         doFetch(_weatherPos.latitude, _weatherPos.longitude);
       }, () => {
-        // Permission denied — show persistent prompt instead of a fleeting toast
+        // Permission denied or timed out — show persistent prompt
+
         row.style.display = 'none';
         msgEl.innerHTML = '';
         const permDiv = document.createElement('div');
@@ -199,7 +207,7 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         });
         permDiv.append(permText, permBtn);
         msgEl.appendChild(permDiv);
-      });
+      }, { timeout: 8000, maximumAge: 5 * 60 * 1000 });
     }
 
     /* ── Events ── */

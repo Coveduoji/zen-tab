@@ -69,7 +69,9 @@ function initTopClock() {
     if (dateEl) dateEl.textContent = lang==='zh' ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日` : `${WD_EN[n.getDay()]}, ${MO_EN[n.getMonth()]} ${n.getDate()}`;
   }
   tickTop();
-  setInterval(tickTop, 1000);
+  const _clockId = setInterval(tickTop, 1000);
+  // Clean up on tab close to avoid accumulating intervals across hot reloads
+  window.addEventListener('beforeunload', () => clearInterval(_clockId), { once: true });
 }
 
 function setLang(l) {

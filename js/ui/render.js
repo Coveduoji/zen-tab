@@ -238,7 +238,12 @@ function makeWidget(wdata, layoutOverrides) {
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup',   onUp);
-  el._unbindDrag = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  // _unbindDrag also tears down resize handle listeners (which also attach to document)
+  el._unbindDrag = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    el.querySelectorAll('.rh').forEach(h => h._unbind?.());
+  };
 
   /* ────────── RESIZE ────────── */
   el.querySelectorAll('.rh').forEach(handle => {

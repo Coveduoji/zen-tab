@@ -91,3 +91,6 @@ state.widgets.forEach(w => {
 });
 
 const debouncedSaveState = debounce(saveState, 500);
+
+// Flush state immediately on tab close — bypasses the 500 ms debounce window
+window.addEventListener('beforeunload', saveState);
