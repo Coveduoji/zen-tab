@@ -97,7 +97,11 @@ function pushDown(mover, widgets, depth = 0) {
       const blocked = widgets.some(w => w.id !== hit.id && w.id !== mover.id && collides(test, w));
       if (!blocked) { hit.x = c.x; hit.y = c.y; moved = true; break; }
     }
-    if (!moved) hit.y = mover.y + mover.h;
+    if (!moved) {
+      // No valid candidate — place below the lowest widget to guarantee no overlap
+      const maxBottom = widgets.reduce((m, w) => w.id !== hit.id ? Math.max(m, w.y + w.h) : m, 0);
+      hit.y = maxBottom;
+    }
     pushDown(hit, widgets, depth + 1);
   }
 }
