@@ -48,8 +48,6 @@ function wPxResponsive(w, overrides) {
   return { left: rx * (colW + GAP), top: ry_ * (rowH() + GAP), width, height };
 }
 
-function computeResponsiveLayout() { return null; }
-
 // ── Constraint enforcement ────────────────────────────────
 function clamp(w) {
   const r = SIZE_RULES[w.type] || { minW:1, minH:1, maxW:COLS, maxH:20 };

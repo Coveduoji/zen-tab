@@ -1,6 +1,13 @@
 /* ═══════════════════════════════════════════════════════
    WIDGET INSTANCE MANAGER
    ═══════════════════════════════════════════════════════ */
+
+// Single pair of document-level listeners shared by all widgets (drag + resize).
+// Each mousedown registers its own handlers; mouseup clears them automatically.
+let _docMoveH = null, _docUpH = null;
+document.addEventListener('mousemove', e => _docMoveH?.(e));
+document.addEventListener('mouseup',   e => { _docUpH?.(e); _docMoveH = null; _docUpH = null; });
+
 function saveWCfg(id, cfg) {
   const w = state.widgets.find(w=>w.id===id);
   if (w) { w.config=cfg; saveState(); }
@@ -132,6 +139,7 @@ function makeWidget(wdata, layoutOverrides) {
     const rect = el.getBoundingClientRect();
     offX = e.clientX - rect.left;
     offY = e.clientY - rect.top;
+    _docMoveH = onMove; _docUpH = onUp;
   });
 
   function onMove(e) {
@@ -152,7 +160,7 @@ function makeWidget(wdata, layoutOverrides) {
       ghost = document.getElementById('drop-ghost');
       ghost.style.display = 'block';
       ghost.className = 'drop-ghost valid';
-      const curPx = wPxResponsive(wdata, computeResponsiveLayout());
+      const curPx = wPxResponsive(wdata, null);
       ghost.style.cssText = `display:block;left:${curPx.left}px;top:${curPx.top}px;width:${curPx.width}px;height:${curPx.height}px;`;
     }
 
@@ -236,12 +244,9 @@ function makeWidget(wdata, layoutOverrides) {
     positionAll(); // only update CSS positions — no DOM teardown → no flash
   }
 
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup',   onUp);
-  // _unbindDrag also tears down resize handle listeners (which also attach to document)
+  // _unbindDrag clears singleton handlers (if this widget owns them) and resize handles
   el._unbindDrag = () => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
+    if (_docMoveH === onMove) { _docMoveH = null; _docUpH = null; }
     el.querySelectorAll('.rh').forEach(h => h._unbind?.());
   };
 
@@ -257,6 +262,7 @@ function makeWidget(wdata, layoutOverrides) {
       rsW=wdata.w; rsH=wdata.h;
       rsColX=wdata.x; rsRowY=wdata.y;
       el.style.transition='none';
+      _docMoveH = onResizeMove; _docUpH = onResizeUp;
     });
 
     function onResizeMove(e) {
@@ -291,7 +297,7 @@ function makeWidget(wdata, layoutOverrides) {
         wdata.w = sqClamped; wdata.h = sqClamped;
       }
 
-      const px = wPxResponsive(wdata, computeResponsiveLayout());
+      const px = wPxResponsive(wdata, null);
       el.style.left=px.left+'px'; el.style.top=px.top+'px';
       el.style.width=px.width+'px'; el.style.height=px.height+'px';
     }
@@ -305,9 +311,7 @@ function makeWidget(wdata, layoutOverrides) {
       renderAll();
     }
 
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup',   onResizeUp);
-    handle._unbind=()=>{ document.removeEventListener('mousemove',onResizeMove); document.removeEventListener('mouseup',onResizeUp); };
+    handle._unbind = () => { if (_docMoveH === onResizeMove) { _docMoveH = null; _docUpH = null; } };
   });
 
   return el;
@@ -347,8 +351,8 @@ function renderAll() {
   const canvas = document.getElementById('grid-canvas');
   canvas.querySelectorAll('.widget').forEach(el=>{ cleanupWidget(el.dataset.id); el._unbindDrag?.(); el.remove(); });
 
-  // Compute responsive layout overrides (null when full-width)
-  const layoutOverrides = computeResponsiveLayout();
+  // computeResponsiveLayout() always returns null (reserved for future responsive mode)
+  const layoutOverrides = null;
 
   // Compute canvas height from the effective (possibly overridden) layout
   let maxRow = 0;
@@ -377,7 +381,7 @@ function updateEmptyHint() {
  */
 function positionAll() {
   const canvas = document.getElementById('grid-canvas');
-  const layoutOverrides = computeResponsiveLayout();
+  const layoutOverrides = null;
 
   // Recalculate canvas height (read phase — before any writes)
   let maxRow = 0;
@@ -408,3 +412,4 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); renderAll(); }, 120);
 });
+window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });

@@ -11,7 +11,15 @@ reg({ type:'clock', get name(){return t('w_clock');}, get desc(){return t('w_clo
         ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日`
         : `${WD_EN[n.getDay()]} ${MO_EN[n.getMonth()]} ${n.getDate()}`;
     }
-    tick(); registerTimer(id, setInterval(tick, 1000));
+    tick();
+    let iv = setInterval(tick, 1000);
+    registerTimer(id, iv);
+    // Pause when tab is hidden to save CPU; resume with immediate tick when visible
+    document.addEventListener('visibilitychange', function onVis() {
+      if (!document.getElementById(`ch-${id}`)) { document.removeEventListener('visibilitychange', onVis); return; }
+      if (document.hidden) { clearInterval(iv); }
+      else { tick(); iv = setInterval(tick, 1000); registerTimer(id, iv); }
+    });
   }
 });
 
