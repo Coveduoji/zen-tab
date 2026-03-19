@@ -4,6 +4,12 @@
    ═══════════════════════════════════════════════════════ */
 
 let _grid = null; // GridStack instance
+let _cellRO = null; // ResizeObserver for square cells
+
+function _computeCellHeight() {
+  const el = document.getElementById('grid-canvas');
+  return el ? Math.max(70, Math.floor(el.offsetWidth / COLS)) : 90;
+}
 
 function saveWCfg(id, cfg) {
   const w = state.widgets.find(w => w.id === id);
@@ -121,8 +127,7 @@ function renderAll() {
 
   _grid = GridStack.init({
     column: COLS,
-    cellHeight: 90,
-    cellHeightUnit: 'px',
+    cellHeight: _computeCellHeight(),
     margin: 8,
     animate: false,
     disableDrag: true,
@@ -165,6 +170,14 @@ function renderAll() {
     debouncedSaveState();
   });
 
+  // Responsive square cells — set up once, update on container resize
+  if (!_cellRO) {
+    _cellRO = new ResizeObserver(() => {
+      if (_grid) _grid.cellHeight(_computeCellHeight());
+    });
+    _cellRO.observe(document.getElementById('grid-canvas'));
+  }
+
   updateEmptyHint();
   if (editMode) _setGridEditable(true);
 }
@@ -191,6 +204,8 @@ function refreshGridLayout(widgets) {
     if (w) _grid.update(gsItem, { x: w.x, y: w.y, w: w.w, h: w.h });
   });
   _grid.batchUpdate(false);
+  // update() resets per-item drag/resize state; re-apply if in edit mode
+  if (editMode) _setGridEditable(true);
 }
 
 function addWidget(wdata) {
