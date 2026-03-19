@@ -615,7 +615,7 @@ body.edit-mode #fab-hover-zone {
    ═══════════════════════════════════════════ */
 #grid-outer {
   flex: 1; overflow-y: auto; overflow-x: hidden;
-  padding: calc(22vh + 72px) 40px 48px;
+  padding: calc(22vh + 72px) clamp(16px, 3.5vw, 40px) 48px;
   position: relative; z-index: 1;
   scrollbar-width: thin; scrollbar-color: var(--card-border) transparent;
 }
@@ -687,9 +687,22 @@ body.edit-mode .grid-stack-item:active { cursor: grabbing; }
 .grid-stack-item .ui-resizable-handle { display: none !important; }
 body.edit-mode .grid-stack-item .ui-resizable-handle { display: block !important; }
 
-/* Delete badge */
-.w-del-badge { display: none !important; }
-body.edit-mode .w-del-badge { display: flex !important; }
+/* Delete badge — absolutely positioned so it never takes up space in flex layout */
+.w-del-badge {
+  position: absolute; top: 4px; left: 4px; z-index: 20;
+  display: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #e53935; color: #fff;
+  font-size: 1.1rem; font-weight: 700;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+  transition: transform .15s var(--ease);
+  pointer-events: auto;
+  user-select: none;
+}
+body.edit-mode .w-del-badge { display: flex; }
+body.edit-mode .w-del-badge:hover { transform: scale(1.15); }
 
 /* Widget inner layout */
 .w-header {
@@ -1934,6 +1947,8 @@ body.any-dragging .embed-iframe { pointer-events: none !important; }
 .btn-p:hover { filter: brightness(1.12); }
 .btn-s { padding: 7px 16px; border-radius: var(--r-sm); border: 1.5px solid var(--card-border); background: transparent; color: var(--text-muted); font-family: var(--body); font-size: .82rem; cursor: pointer; transition: all var(--t); }
 .btn-s:hover { color: var(--text); border-color: var(--text); }
+.btn-danger { padding: 7px 16px; border-radius: var(--r-sm); border: 1.5px solid rgba(245,106,106,.5); background: rgba(245,106,106,.08); color: var(--danger, #f56b6b); font-family: var(--body); font-size: .82rem; cursor: pointer; transition: all var(--t); }
+.btn-danger:hover { background: rgba(245,106,106,.2); border-color: var(--danger, #f56b6b); }
 
 /* Toast */
 #toasts { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }

@@ -43,6 +43,14 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
 
       const anchor = document.getElementById(`la-${id}`);
       if (!anchor) return;
+      anchor.addEventListener('click', e => {
+        if (editMode) return;
+        const w = body.closest('.widget');
+        if (!w) return;
+        if (w._justLongPressed) { w._justLongPressed = false; return; }
+        if (w._wasDragged) return;
+        window.open(cfg.url, '_blank', 'noopener,noreferrer');
+      });
       anchor.addEventListener('keydown', e => {
         if ((e.key === 'Enter' || e.key === ' ') && !editMode) {
           e.preventDefault();

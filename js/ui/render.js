@@ -5,6 +5,7 @@
 
 let _grid = null; // GridStack instance
 let _cellRO = null; // ResizeObserver for square cells
+let _lastCW  = 0;  // last canvas width — prevents infinite ResizeObserver loops
 
 function _computeCellHeight() {
   const el = document.getElementById('grid-canvas');
@@ -101,7 +102,7 @@ function _initWLP(el) {
       const pct = Math.min(1, (ts - _wlp.startTs) / _WLP_DUR);
       fill.style.strokeDashoffset = C * (1 - pct);
       if (pct < 1) _wlp.timer = requestAnimationFrame(frame);
-      else { _wlpStop(); enterEditMode(); }
+      else { el._justLongPressed = true; _wlpStop(); enterEditMode(); }
     }
     _wlp.timer = requestAnimationFrame(frame);
   });
@@ -170,10 +171,15 @@ function renderAll() {
     debouncedSaveState();
   });
 
-  // Responsive square cells — set up once, update on container resize
+  // Responsive square cells — set up once, only re-computes when WIDTH changes
   if (!_cellRO) {
     _cellRO = new ResizeObserver(() => {
-      if (_grid) _grid.cellHeight(_computeCellHeight());
+      const canvasEl = document.getElementById('grid-canvas');
+      if (!_grid || !canvasEl) return;
+      const cw = canvasEl.offsetWidth;
+      if (cw === _lastCW) return;
+      _lastCW = cw;
+      _grid.cellHeight(Math.max(70, Math.floor(cw / COLS)));
     });
     _cellRO.observe(document.getElementById('grid-canvas'));
   }
