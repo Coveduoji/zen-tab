@@ -406,6 +406,6 @@ function positionAll() {
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); renderAll(); }, 120);
+  resizeTimer = setTimeout(() => { normalizeToVc(); resolveCollisions(); buildGridBg(); renderAll(); }, 120);
 });
 window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });

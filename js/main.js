@@ -16,8 +16,9 @@ var pureMode = false;
     setTimeout(() => applyBgPalette(state.settings.background.palette), 0);
   }
 
-  // 3. Layout: normalise coords to visible columns
+  // 3. Layout: normalise coords to visible columns, then resolve any collisions
   normalizeToVc();
+  resolveCollisions();
   if (!localStorage.getItem('dash_v3')) saveState();
 
   // 4. Init UI subsystems

@@ -67,6 +67,15 @@ function normalizeToVc() {
   });
 }
 
+// After normalizeToVc() multiple widgets may land on the same cell.
+// Resolve by processing widgets top→left first and pushing colliders down.
+function resolveCollisions() {
+  const sorted = [...state.widgets].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const w of sorted) {
+    pushDown(w, state.widgets);
+  }
+}
+
 // ── Collision detection ───────────────────────────────────
 function collides(a, b) {
   if (a.id === b.id) return false;
