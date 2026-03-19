@@ -28,22 +28,43 @@ function collides(a, b) {
   return !(a.x+a.w <= b.x || b.x+b.w <= a.x || a.y+a.h <= b.y || b.y+b.h <= a.y);
 }
 
+// Build a Set of occupied "x,y" cells from a list of placed widgets
+function _buildOccupied(widgets) {
+  const s = new Set();
+  for (const w of widgets)
+    for (let dy = 0; dy < w.h; dy++)
+      for (let dx = 0; dx < w.w; dx++)
+        s.add((w.x + dx) + ',' + (w.y + dy));
+  return s;
+}
+
+// Check if a rect (x,y,ww,wh) fits in an occupied-cell Set
+function _fits(occ, x, y, ww, wh) {
+  for (let dy = 0; dy < wh; dy++)
+    for (let dx = 0; dx < ww; dx++)
+      if (occ.has((x + dx) + ',' + (y + dy))) return false;
+  return true;
+}
+
 function findFreeSlot(ww, wh, widgets) {
+  const occ = _buildOccupied(widgets);
   for (let y = 0; y < 40; y++)
     for (let x = 0; x <= COLS - ww; x++)
-      if (!widgets.some(w => collides({ id:'__new__', x, y, w:ww, h:wh }, w))) return { x, y };
+      if (_fits(occ, x, y, ww, wh)) return { x, y };
   return { x: 0, y: 0 };
 }
 
 function tidyLayout(widgets) {
   const sorted = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x);
   const placed = [];
-  for (const w of sorted)
+  for (const w of sorted) {
+    const occ = _buildOccupied(placed);
     outer: for (let y = 0; y < 40; y++)
       for (let x = 0; x <= COLS - w.w; x++)
-        if (!placed.some(p => collides({ id:w.id, x, y, w:w.w, h:w.h }, p))) {
+        if (_fits(occ, x, y, w.w, w.h)) {
           w.x = x; w.y = y; placed.push({ ...w }); break outer;
         }
+  }
 }
 
 function compact(widgets) {
@@ -51,8 +72,9 @@ function compact(widgets) {
   const sorted = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x);
   const placed = [];
   for (const w of sorted) {
+    const occ = _buildOccupied(placed);
     for (let y = 0; y <= w.y; y++) {
-      if (!placed.some(p => collides({ ...w, y }, p))) { w.y = y; break; }
+      if (_fits(occ, w.x, y, w.w, w.h)) { w.y = y; break; }
     }
     placed.push(w);
   }

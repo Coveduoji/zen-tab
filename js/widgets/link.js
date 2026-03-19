@@ -26,14 +26,19 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
         <div class="lw-tooltip">${esc(cfg.name)}</div>
       </div>`;
 
-      // Favicon error fallback
+      // Favicon error/timeout fallback
       const img = body.querySelector('.lw-img');
       if (img) {
-        img.addEventListener('error', () => {
+        const doFallback = () => {
+          if (!img.parentNode) return;
+          clearTimeout(favTimer);
           const fb = document.createElement('span');
           fb.textContent = img.dataset.fb || '🔗';
           img.replaceWith(fb);
-        });
+        };
+        const favTimer = setTimeout(doFallback, 5000);
+        img.addEventListener('error', doFallback);
+        img.addEventListener('load', () => clearTimeout(favTimer));
       }
 
       const anchor = document.getElementById(`la-${id}`);

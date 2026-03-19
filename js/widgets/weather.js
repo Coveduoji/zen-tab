@@ -60,9 +60,12 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
     wrap.addEventListener('mouseleave', () => refreshBtn.style.opacity = '0');
 
     /* ── 7-day forecast modal ── */
+    let _forecastOpen = false;
     function openForecastModal(fullData) {
+      if (_forecastOpen) return;
       const existing = document.getElementById('weather-forecast-modal');
       if (existing) { existing.remove(); return; }
+      _forecastOpen = true;
 
       const ov = document.createElement('div');
       ov.id = 'weather-forecast-modal';
@@ -125,11 +128,19 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
       ov.appendChild(modal);
       document.body.appendChild(ov);
 
-      closeBtn.addEventListener('click', e => { e.stopPropagation(); ov.remove(); });
-      ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+      const closeModal = () => { ov.remove(); _forecastOpen = false; };
+      closeBtn.addEventListener('click', e => { e.stopPropagation(); closeModal(); });
+      ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
       document.addEventListener('keydown', function esc(e) {
-        if (e.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', esc); }
+        if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', esc); }
       });
+    }
+
+    /* ── Fetch with timeout helper ── */
+    function fetchWithTimeout(url, opts, ms) {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(tid));
     }
 
     /* ── Fetch with 7-day data ── */
@@ -144,7 +155,7 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}` +
           `&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min` +
           `&timezone=auto&forecast_days=7`;
-        fetch(url)
+        fetchWithTimeout(url, {}, 10000)
           .then(r => r.json())
           .then(d => {
             const cw   = d.current_weather;
@@ -156,7 +167,7 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
               hi: d.daily.temperature_2m_max[i],
               lo: d.daily.temperature_2m_min[i],
             }));
-            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${la}&lon=${lo}&format=json`)
+            fetchWithTimeout(`https://nominatim.openstreetmap.org/reverse?lat=${la}&lon=${lo}&format=json`, {}, 8000)
               .then(r => r.json())
               .then(geo => {
                 const city = geo.address?.city || geo.address?.town || geo.address?.village || '—';

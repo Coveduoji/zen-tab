@@ -83,6 +83,7 @@ function saveState() {
     }));
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
+      let fallbackOk = false;
       try {
         const minimal = state.widgets.map(w =>
           w.type === 'link' ? { ...w, config: { ...w.config, customImg: undefined } } : w
@@ -91,8 +92,13 @@ function saveState() {
           ? { ...state.settings, background: { ...state.settings.background, value: '__dash_bg_img__' } }
           : state.settings;
         localStorage.setItem('dash_v3', JSON.stringify({ version: STORAGE_VERSION, widgets: minimal, settings: minSettings }));
+        fallbackOk = true;
       } catch(_) {}
-      toast(lang === 'zh' ? '⚠ 存储空间不足，自定义图标可能未保存' : '⚠ Storage full — custom icons may not be saved', 'err');
+      if (fallbackOk) {
+        toast(lang === 'zh' ? '⚠ 存储空间不足，自定义图标可能未保存' : '⚠ Storage full — custom icons may not be saved', 'warn');
+      } else {
+        toast(lang === 'zh' ? '❌ 存储空间严重不足，本次更改未能保存' : '❌ Storage full — changes could not be saved', 'err');
+      }
     }
   }
 }

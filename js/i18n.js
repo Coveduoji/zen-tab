@@ -162,9 +162,11 @@ const I18N = {
 
 // Current language — set during state load in state.js
 var lang = 'zh';
+var _i18nCache = null; // cached reference to I18N[lang], invalidated on language change
 
 function t(k, ...a) {
-  const v = I18N[lang]?.[k] ?? I18N.en?.[k] ?? k;
+  if (!_i18nCache) _i18nCache = I18N[lang] || I18N.en;
+  const v = _i18nCache[k] ?? I18N.en?.[k] ?? k;
   return typeof v === 'function' ? v(...a) : v;
 }
 

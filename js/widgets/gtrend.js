@@ -121,9 +121,12 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
       }
       showLoading();
 
+      const _gtCtrl = new AbortController();
+      const _gtTid = setTimeout(() => _gtCtrl.abort(), 12000);
       fetch(buildApiUrl(), {
-        headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
-      })
+        headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+        signal: _gtCtrl.signal
+      }).finally(() => clearTimeout(_gtTid))
         .then(r => {
           if (r.status === 403) throw new Error('rate_limit');
           if (!r.ok) throw new Error('HTTP ' + r.status);

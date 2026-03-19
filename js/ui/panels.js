@@ -82,7 +82,7 @@ function initTopClock() {
 }
 
 function setLang(l) {
-  lang = l; state.settings.lang = l; saveState();
+  lang = l; _i18nCache = null; state.settings.lang = l; saveState();
   applyI18n(); tickClock();
   if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
   if (document.getElementById('marketplace-bg')?.classList.contains('open')) renderMarket();
