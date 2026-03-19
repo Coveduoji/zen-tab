@@ -20,7 +20,8 @@ var pureMode = false;
   }
 
   // 3. Layout: normalise coords, compact
-  normalizeToVc();
+  // Clamp widget coords to COLS=12 (Gridstack default)
+  state.widgets.forEach(w => clamp(w));
   compact(state.widgets);
   // Only save if compact actually changed widget positions (first load or stale data)
   if (!localStorage.getItem('dash_v3')) saveState();

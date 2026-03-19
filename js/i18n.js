@@ -75,7 +75,7 @@ const I18N = {
     bulk_add_btn: '添加', bulk_add_result: n => `已添加 ${n} 个链接`,
     bulk_add_none: '未识别到有效链接',
     del_confirm_t: '删除组件', del_confirm_s: '此操作不可撤销',
-    del_btn: '删除',
+    del_btn: '删除', del_selected_btn: '删除选中',
     fab_add: '添加组件', fab_settings: '设置', fab_theme: '切换主题', fab_pure: '纯净模式',
     pure_esc_hint: '按 ESC 退出纯净模式',
   },
@@ -154,7 +154,7 @@ const I18N = {
     bulk_add_btn: 'Add', bulk_add_result: n => `Added ${n} link${n===1?'':'s'}`,
     bulk_add_none: 'No valid links found',
     del_confirm_t: 'Remove Widget', del_confirm_s: 'This action cannot be undone',
-    del_btn: 'Remove',
+    del_btn: 'Remove', del_selected_btn: 'Delete Selected',
     fab_add: 'Add Widget', fab_settings: 'Settings', fab_theme: 'Toggle Theme', fab_pure: 'Pure Mode',
     pure_esc_hint: 'Press ESC to exit pure mode',
   }

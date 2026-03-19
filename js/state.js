@@ -1,5 +1,5 @@
 'use strict';
-const STORAGE_VERSION = 3; // bump this when data shape changes
+const STORAGE_VERSION = 4; // bump: switched from 20-col to 12-col (Gridstack)
 const DEF_WIDGETS = [
   { id:'wl1', type:'link', x:0, y:0, w:1, h:1, config:{ name:'zen-tab', url:'https://github.com/Coveduoji/zen-tab' } },
 ];
@@ -16,11 +16,16 @@ function loadState() {
 
     // Version mismatch: attempt safe migration instead of silent data loss
     if (s.version !== STORAGE_VERSION) {
-      // Future: add per-version migration logic here
-      // For now: preserve widgets + settings, just update version
       s.version = STORAGE_VERSION;
       if (!s.settings) s.settings = {...DEF_SETTINGS};
       if (!s.widgets)  s.widgets  = DEF_WIDGETS.map(w => ({...w, config:{...w.config}}));
+      // Migrate from 20-col to 12-col: scale x and w proportionally
+      if (s.version < 4) {
+        s.widgets.forEach(w => {
+          w.x = Math.round(w.x * 12 / 20);
+          w.w = Math.max(1, Math.round(w.w * 12 / 20));
+        });
+      }
     }
 
     // Restore bg image from separate key if needed

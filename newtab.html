@@ -12,6 +12,8 @@
   }
 </style>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="lib/gridstack.min.css">
+<script src="lib/gridstack.min.js"></script>
 <script>
   /* Anti-FOUC: read saved theme from localStorage before first paint */
   (function() {
@@ -87,18 +89,11 @@
     <div class="ctx-item danger" id="ctx-del"><span class="ctx-ico">🗑</span> <span data-i18n="del_btn">删除</span></div>
   </div>
 
-  <!-- TRASH ZONE (edit mode, multi-select) -->
-  <div id="trash-zone">
-    <div id="trash-zone-inner">
-      <span id="trash-icon">🗑</span>
-      <span id="trash-label"></span>
-    </div>
-  </div>
-
   <!-- EDIT MODE BAR -->
   <div id="edit-bar">
     <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
     <div id="edit-bar-actions">
+      <button class="edit-action-btn danger" id="btn-del-selected" style="display:none" data-i18n="del_selected_btn"></button>
       <button class="edit-action-btn tidy" id="btn-tidy" data-i18n="tidy_btn"></button>
       <button class="edit-action-btn done" id="btn-done" data-i18n="done_btn"></button>
     </div>
@@ -109,9 +104,7 @@
 
   <!-- GRID -->
   <div id="grid-outer">
-    <div id="grid-canvas">
-      <div id="grid-bg"></div>
-      <div id="drop-ghost"></div>
+    <div id="grid-canvas" class="grid-stack">
       <div id="empty-hint">
         <div class="eh-ico">✦</div>
         <div class="eh-t" data-i18n="empty_title"></div>

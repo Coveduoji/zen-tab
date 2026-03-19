@@ -154,80 +154,44 @@ function _hslToHex(h,s,l) {
   return '#'+[hue2rgb(h+1/3),hue2rgb(h),hue2rgb(h-1/3)].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
 }
 
-// Worker source — K-means runs entirely off main thread
-const _workerSrc = `
-function lin(c){c/=255;return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
-function lum(r,g,b){return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);}
-function kmeans(pixels,k,iters){
-  const step=Math.max(1,Math.floor(pixels.length/k));
-  let centroids=Array.from({length:k},(_,i)=>({...pixels[Math.min(i*step,pixels.length-1)]}));
-  const assignments=new Int32Array(pixels.length);
-  for(let it=0;it<iters;it++){
-    for(let pi=0;pi<pixels.length;pi++){const p=pixels[pi];let best=0,bestDist=Infinity;for(let ci=0;ci<k;ci++){const c=centroids[ci];const d=(p.r-c.r)**2+(p.g-c.g)**2+(p.b-c.b)**2;if(d<bestDist){bestDist=d;best=ci;}}assignments[pi]=best;}
-    const sums=Array.from({length:k},()=>({r:0,g:0,b:0,n:0}));
-    for(let pi=0;pi<pixels.length;pi++){const s=sums[assignments[pi]],p=pixels[pi];s.r+=p.r;s.g+=p.g;s.b+=p.b;s.n++;}
-    centroids=sums.map((s,ci)=>s.n>0?{r:s.r/s.n,g:s.g/s.n,b:s.b/s.n}:centroids[ci]);
-  }
-  const counts=new Int32Array(k);assignments.forEach(ci=>counts[ci]++);
-  return centroids.map((c,i)=>({r:Math.round(c.r),g:Math.round(c.g),b:Math.round(c.b),count:counts[i]}));
-}
-self.onmessage = function(e) {
-  const {data} = e.data;
-  const pixels=[];
-  for(let i=0;i<data.length;i+=16){
-    const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
-    if(a<200)continue;
-    const l=lum(r,g,b);
-    if(l>0.92||l<0.02)continue;
-    pixels.push({r,g,b});
-  }
-  if(pixels.length<8){self.postMessage({error:'not enough pixels'});return;}
-  self.postMessage({result:kmeans(pixels,6,12)});
-};
-`;
-
-let _paletteWorker = null;
-function _getPaletteWorker() {
-  if (_paletteWorker) return _paletteWorker;
-  const blob = new Blob([_workerSrc], { type: 'application/javascript' });
-  const url  = URL.createObjectURL(blob);
-  _paletteWorker = new Worker(url);
-  URL.revokeObjectURL(url);
-  return _paletteWorker;
-}
-
+// Simple dominant color extraction — median of most saturated pixels
 function extractPaletteFromDataUrl(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       try {
-        const SIZE = 64;
+        const SIZE = 48;
         const canvas = typeof OffscreenCanvas !== 'undefined'
           ? new OffscreenCanvas(SIZE, SIZE)
           : (() => { const c = document.createElement('canvas'); c.width = c.height = SIZE; return c; })();
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, SIZE, SIZE);
         const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
-        const worker = _getPaletteWorker();
-        const handler = (e) => {
-          worker.removeEventListener('message', handler);
-          if (e.data.error) { reject(new Error(e.data.error)); return; }
-          const scored = e.data.result.map(c => {
-            const [h, s, l] = _rgbToHsl(c.r, c.g, c.b);
-            return { ...c, h, s, l, score: s*(1-Math.abs(l-0.5)*2)*Math.sqrt(c.count) };
-          }).sort((a, b) => b.score - a.score);
-          resolve(buildPaletteFromColor(scored[0]));
-        };
-        worker.addEventListener('message', handler);
-        // Transfer pixel data — avoid copying large ArrayBuffer
-        const buf = data.buffer.slice(0);
-        worker.postMessage({ data: new Uint8ClampedArray(buf) }, [buf]);
+        // Collect pixels, filter out near-white/black, sort by saturation
+        const pixels = [];
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+          if (a < 200) continue;
+          const max = Math.max(r,g,b), min = Math.min(r,g,b);
+          const l = (max+min)/510;
+          if (l > 0.92 || l < 0.05) continue;
+          const s = max === min ? 0 : (max-min)/(255*(1-Math.abs(2*l-1)));
+          pixels.push({ r, g, b, s });
+        }
+        if (pixels.length < 8) { reject(new Error('not enough pixels')); return; }
+        // Pick the median of the top-third most saturated pixels
+        pixels.sort((a, b) => b.s - a.s);
+        const top = pixels.slice(0, Math.max(1, Math.floor(pixels.length / 3)));
+        const mid = top[Math.floor(top.length / 2)];
+        const [h, s, l] = _rgbToHsl(mid.r, mid.g, mid.b);
+        resolve(buildPaletteFromColor({ r: mid.r, g: mid.g, b: mid.b, h, s, l }));
       } catch(e) { reject(e); }
     };
     img.onerror = reject;
     img.src = dataUrl;
   });
 }
+
 function buildPaletteFromColor({r,g,b,h,s,l}){
   const lum=_lum(r,g,b),isDark=lum<0.25;
   const accentL=isDark?0.65:0.48,accentS=Math.min(1,Math.max(0.55,s));
