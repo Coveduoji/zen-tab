@@ -1,10 +1,23 @@
 'use strict';
+// ── Monet hue definitions ─────────────────────────────────
+const MONET_HUES = [
+  { id:'lavender',   label:'薰衣草', labelEn:'Lavender',   ripple:'#dfe7ff', grad:'linear-gradient(135deg,#dfe7ff,#f3e8ff,#e8f6ff)', bg:'#dfe7ff', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#6c5ce7' },
+  { id:'rose',       label:'玫瑰',   labelEn:'Rose',       ripple:'#ffd6e0', grad:'linear-gradient(135deg,#ffd6e0,#ffecf0,#ffe8f5)', bg:'#ffd6e0', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#e84393' },
+  { id:'ocean',      label:'海洋',   labelEn:'Ocean',      ripple:'#d4f1f9', grad:'linear-gradient(135deg,#d4f1f9,#e8f4fd,#d6eaff)', bg:'#d4f1f9', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#0984e3' },
+  { id:'forest',     label:'丛林',   labelEn:'Forest',     ripple:'#d4edda', grad:'linear-gradient(135deg,#d4edda,#e8f5e9,#f0fdf4)', bg:'#d4edda', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#00b894' },
+  { id:'terracotta', label:'陶土',   labelEn:'Clay',       ripple:'#ffe8d6', grad:'linear-gradient(135deg,#ffe8d6,#fff3e0,#ffecd2)', bg:'#ffe8d6', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#e17055' },
+  { id:'sand',       label:'沙丘',   labelEn:'Sand',       ripple:'#f5f0e8', grad:'linear-gradient(135deg,#f5f0e8,#fdf6ec,#fffbf5)', bg:'#f5f0e8', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#a0522d' },
+];
+
 // ── View Transitions ripple ──────────────────────────────
 let _rippleBusy = false;
 let _currentTransition = null;
 
-function _commitTheme(th) {
-  document.documentElement.setAttribute('data-theme', th);
+function _commitTheme(th, hue) {
+  const root = document.documentElement;
+  root.setAttribute('data-theme', th);
+  if (th === 'monet' && hue) root.setAttribute('data-monet-hue', hue);
+  else root.removeAttribute('data-monet-hue');
 }
 
 function _runRippleTransition(fromEl, commitFn, onDone) {
@@ -51,13 +64,29 @@ function _runRippleTransition(fromEl, commitFn, onDone) {
 }
 
 function applyTheme(th, fromEl) {
+  const hue = state.settings.monetHue || 'lavender';
   _runRippleTransition(fromEl, () => {
-    _commitTheme(th);
+    _commitTheme(th, hue);
     state.settings.theme = th;
     saveState();
     applyBackground();
   }, () => {
     if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
+  });
+}
+
+function applyMonetHue(hueId, fromEl) {
+  state.settings.monetHue = hueId;
+  if (state.settings.theme !== 'monet') state.settings.theme = 'monet';
+  saveState();
+
+  // Update active state on hue buttons immediately — don't wait for transition
+  document.querySelectorAll('.monet-hue-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.hue === hueId);
+  });
+
+  _runRippleTransition(fromEl, () => {
+    _commitTheme('monet', hueId);
   });
 }
 
@@ -88,7 +117,8 @@ function applyBackground() {
   const ov = parseFloat(bg.overlay)||0;
   if (ov > 0 && !pureMode) {
     const th = document.documentElement.getAttribute('data-theme')||'dark';
-    ovEl.style.background = th === 'light' ? `rgba(255,255,255,${ov*0.5})` : `rgba(0,0,0,${ov})`;
+    const isLight = th==='light'||th==='monet';
+    ovEl.style.background = isLight ? `rgba(255,255,255,${ov*0.5})` : `rgba(0,0,0,${ov})`;
   } else { ovEl.style.background = ''; }
   document.body.classList.toggle('has-custom-bg', !!(hasImg || hasColor));
 }
@@ -109,7 +139,7 @@ function _loadBgFile(file) {
   reader.readAsDataURL(file);
 }
 
-// ── Palette extraction (K-means) ──────────────────────────
+// ── Palette extraction (K-means, OffscreenCanvas + Worker) ─
 function _lin(c) { c/=255; return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4); }
 function _lum(r,g,b) { return 0.2126*_lin(r)+0.7152*_lin(g)+0.0722*_lin(b); }
 function _rgbToHsl(r,g,b) {
@@ -123,7 +153,12 @@ function _hslToHex(h,s,l) {
   const hue2rgb=t=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};
   return '#'+[hue2rgb(h+1/3),hue2rgb(h),hue2rgb(h-1/3)].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
 }
-function _kmeans(pixels,k=6,iters=10) {
+
+// Worker source — K-means runs entirely off main thread
+const _workerSrc = `
+function lin(c){c/=255;return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+function lum(r,g,b){return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);}
+function kmeans(pixels,k,iters){
   const step=Math.max(1,Math.floor(pixels.length/k));
   let centroids=Array.from({length:k},(_,i)=>({...pixels[Math.min(i*step,pixels.length-1)]}));
   const assignments=new Int32Array(pixels.length);
@@ -136,22 +171,61 @@ function _kmeans(pixels,k=6,iters=10) {
   const counts=new Int32Array(k);assignments.forEach(ci=>counts[ci]++);
   return centroids.map((c,i)=>({r:Math.round(c.r),g:Math.round(c.g),b:Math.round(c.b),count:counts[i]}));
 }
+self.onmessage = function(e) {
+  const {data} = e.data;
+  const pixels=[];
+  for(let i=0;i<data.length;i+=16){
+    const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
+    if(a<200)continue;
+    const l=lum(r,g,b);
+    if(l>0.92||l<0.02)continue;
+    pixels.push({r,g,b});
+  }
+  if(pixels.length<8){self.postMessage({error:'not enough pixels'});return;}
+  self.postMessage({result:kmeans(pixels,6,12)});
+};
+`;
+
+let _paletteWorker = null;
+function _getPaletteWorker() {
+  if (_paletteWorker) return _paletteWorker;
+  const blob = new Blob([_workerSrc], { type: 'application/javascript' });
+  const url  = URL.createObjectURL(blob);
+  _paletteWorker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return _paletteWorker;
+}
+
 function extractPaletteFromDataUrl(dataUrl) {
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.onload=()=>{
-      try{
-        const SIZE=64,canvas=document.createElement('canvas');canvas.width=canvas.height=SIZE;
-        const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,SIZE,SIZE);
-        const {data}=ctx.getImageData(0,0,SIZE,SIZE);
-        const pixels=[];
-        for(let i=0;i<data.length;i+=16){const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];if(a<200)continue;const lum=_lum(r,g,b);if(lum>0.92||lum<0.02)continue;pixels.push({r,g,b});}
-        if(pixels.length<8){reject(new Error('not enough pixels'));return;}
-        const scored=_kmeans(pixels,6,12).map(c=>{const[h,s,l]=_rgbToHsl(c.r,c.g,c.b);const vibrancy=s*(1-Math.abs(l-0.5)*2);return{...c,h,s,l,score:vibrancy*Math.sqrt(c.count)};}).sort((a,b)=>b.score-a.score);
-        resolve(buildPaletteFromColor(scored[0]));
-      }catch(e){reject(e);}
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const SIZE = 64;
+        const canvas = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(SIZE, SIZE)
+          : (() => { const c = document.createElement('canvas'); c.width = c.height = SIZE; return c; })();
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
+        const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+        const worker = _getPaletteWorker();
+        const handler = (e) => {
+          worker.removeEventListener('message', handler);
+          if (e.data.error) { reject(new Error(e.data.error)); return; }
+          const scored = e.data.result.map(c => {
+            const [h, s, l] = _rgbToHsl(c.r, c.g, c.b);
+            return { ...c, h, s, l, score: s*(1-Math.abs(l-0.5)*2)*Math.sqrt(c.count) };
+          }).sort((a, b) => b.score - a.score);
+          resolve(buildPaletteFromColor(scored[0]));
+        };
+        worker.addEventListener('message', handler);
+        // Transfer pixel data — avoid copying large ArrayBuffer
+        const buf = data.buffer.slice(0);
+        worker.postMessage({ data: new Uint8ClampedArray(buf) }, [buf]);
+      } catch(e) { reject(e); }
     };
-    img.onerror=reject;img.src=dataUrl;
+    img.onerror = reject;
+    img.src = dataUrl;
   });
 }
 function buildPaletteFromColor({r,g,b,h,s,l}){
@@ -173,7 +247,7 @@ function buildPaletteFromColor({r,g,b,h,s,l}){
 function applyBgPalette(palette) {
   const TAG_ID='bg-palette-vars'; const existing=document.getElementById(TAG_ID); if(existing)existing.remove(); if(!palette)return;
   const p=palette;
-  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--bg:${p.bg};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
+  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--monet-grad:${p.grad};--bg:${p.bg};--monet-ripple:${p.ripple};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
   const style=document.createElement('style');style.id=TAG_ID;style.textContent=css;document.head.appendChild(style);
 }
 async function triggerBgPaletteExtraction(fromBtn) {

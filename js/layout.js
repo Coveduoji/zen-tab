@@ -11,32 +11,40 @@ const SIZE_RULES = {
   embed:    { minW:3, minH:3, maxW:8, maxH:8, defW:5, defH:5 },
 };
 const COLS_MAX    = 20;
-const GAP         = 8;
-const CELL_TARGET = 60;
+const GAP         = 28;
+const CELL_TARGET = 76;
 const COLS        = COLS_MAX;
 
-// ── Cell geometry ─────────────────────────────────────────
-function visibleCols() {
-  const w = document.getElementById('grid-outer').clientWidth - 48;
-  const fit = Math.floor((w + GAP) / (CELL_TARGET + GAP));
-  return Math.max(1, Math.min(COLS_MAX, fit));
-}
-function gw()      { return document.getElementById('grid-outer').clientWidth - 48; }
-function cw()      { const vc = visibleCols(); return (gw() - GAP * (vc - 1)) / vc; }
-function rowH()    { return cw(); }
-function cx(col)   { return col * (cw() + GAP); }
-function ry(row)   { return row * (rowH() + GAP); }
-function px2col(x) { return Math.round(x / (cw() + GAP)); }
-function px2row(y) { return Math.round(y / (rowH() + GAP)); }
+// ── Layout cache — invalidated on resize ──────────────────
+let _cachedGw = 0, _cachedVc = 0, _cachedCw = 0;
 
+function _updateLayoutCache() {
+  const el = document.getElementById('grid-outer');
+  if (!el) return;
+  _cachedGw = el.clientWidth - 200;
+  _cachedVc = Math.max(1, Math.min(COLS_MAX, Math.floor((_cachedGw + GAP) / (CELL_TARGET + GAP))));
+  _cachedCw = (_cachedGw - GAP * (_cachedVc - 1)) / _cachedVc;
+}
+
+function invalidateLayoutCache() { _cachedGw = 0; }
+
+// ── Cell geometry ─────────────────────────────────────────
+function visibleCols() { if (!_cachedGw) _updateLayoutCache(); return _cachedVc; }
+function gw()          { if (!_cachedGw) _updateLayoutCache(); return _cachedGw; }
+function cw()          { if (!_cachedGw) _updateLayoutCache(); return _cachedCw; }
+function rowH()        { return cw(); }
+function ry(row)       { return row * (rowH() + GAP); }
+
+// Direct pixel position from state coords (used during drag/resize)
 function wPx(w) {
   const colW = cw(), vc = visibleCols();
-  const renderW = Math.min(w.w, vc);
-  const width   = renderW * colW + (renderW - 1) * GAP;
-  const height  = (w.type === 'link' || w.type === 'pomodoro') ? width : w.h * rowH() + (w.h - 1) * GAP;
+  const rw     = Math.min(w.w, vc);
+  const width  = rw * colW + (rw - 1) * GAP;
+  const height = (w.type === 'link' || w.type === 'pomodoro') ? width : w.h * rowH() + (w.h - 1) * GAP;
   return { left: w.x * (colW + GAP), top: ry(w.y), width, height };
 }
 
+// Pixel position with responsive override (used only for renderAll/positionAll)
 function wPxResponsive(w, overrides) {
   const colW = cw(), vc = visibleCols();
   const ov   = overrides && overrides[w.id];
@@ -46,6 +54,45 @@ function wPxResponsive(w, overrides) {
   const width  = rw * colW + (rw - 1) * GAP;
   const height = (w.type === 'link' || w.type === 'pomodoro') ? width : w.h * rowH() + (w.h - 1) * GAP;
   return { left: rx * (colW + GAP), top: ry_ * (rowH() + GAP), width, height };
+}
+
+// Window-shrink reflow: collision-free layout into vc columns (render only, no state mutation)
+function computeResponsiveLayout() {
+  const vc = visibleCols();
+  if (vc >= COLS_MAX) return null;
+
+  const sorted = [...state.widgets].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x);
+  const MAX_ROWS = 200;
+  const grid = new Uint8Array(MAX_ROWS * vc);
+
+  function isFree(x, y, w, h) {
+    for (let r = y; r < y + h; r++) {
+      if (r >= MAX_ROWS) return false;
+      for (let c = x; c < x + w; c++) if (grid[r * vc + c]) return false;
+    }
+    return true;
+  }
+  function occupy(x, y, w, h) {
+    for (let r = y; r < y + h && r < MAX_ROWS; r++)
+      for (let c = x; c < x + w; c++) grid[r * vc + c] = 1;
+  }
+
+  const overrides = {};
+  for (const w of sorted) {
+    const rw = Math.min(w.w, vc);
+    let placed = false;
+    for (let row = 0; !placed; row++) {
+      for (let col = 0; col <= vc - rw; col++) {
+        if (isFree(col, row, rw, w.h)) {
+          overrides[w.id] = { x: col, y: row, w: rw };
+          occupy(col, row, rw, w.h);
+          placed = true;
+          break;
+        }
+      }
+    }
+  }
+  return overrides;
 }
 
 // ── Constraint enforcement ────────────────────────────────
@@ -61,19 +108,9 @@ function clamp(w) {
 function normalizeToVc() {
   const vc = visibleCols();
   state.widgets.forEach(w => {
-    const rw = Math.min(w.w, vc);
-    w.w = rw;
-    w.x = Math.min(w.x, vc - rw);
+    w.w = Math.min(w.w, vc);
+    w.x = Math.min(w.x, vc - w.w);
   });
-}
-
-// After normalizeToVc() multiple widgets may land on the same cell.
-// Resolve by processing widgets top→left first and pushing colliders down.
-function resolveCollisions() {
-  const sorted = [...state.widgets].sort((a, b) => a.y - b.y || a.x - b.x);
-  for (const w of sorted) {
-    pushDown(w, state.widgets);
-  }
 }
 
 // ── Collision detection ───────────────────────────────────
@@ -82,104 +119,63 @@ function collides(a, b) {
   return !(a.x+a.w <= b.x || b.x+b.w <= a.x || a.y+a.h <= b.y || b.y+b.h <= a.y);
 }
 
-function getCollisions(rect, excludeId, widgets) {
-  return widgets.filter(w => w.id !== excludeId && collides(rect, w));
-}
-
-// ── Layout algorithms ─────────────────────────────────────
+// ── Push collision: right → left → down, never up ────────
+// Mutates hit positions in-place. Used after every drop/resize.
 function pushDown(mover, widgets, depth = 0) {
-  if (depth > 30) return;
-  const hits = getCollisions(mover, mover.id, widgets);
-  for (const hit of hits) {
-    const vc = visibleCols();
-    const candidates = [
+  if (depth > 20) return;
+  const vc = visibleCols();
+  for (const hit of widgets) {
+    if (hit.id === mover.id || !collides(mover, hit)) continue;
+    // Try right, then left, then below
+    const tries = [
       { x: mover.x + mover.w, y: hit.y },
       { x: mover.x - hit.w,   y: hit.y },
-      { x: hit.x, y: mover.y + mover.h },
+      { x: hit.x,              y: mover.y + mover.h },
     ];
-    let moved = false;
-    for (const c of candidates) {
-      if (c.x < 0 || c.x + hit.w > vc || c.y < 0) continue;
-      const test    = { ...hit, x: c.x, y: c.y };
-      const blocked = widgets.some(w => w.id !== hit.id && w.id !== mover.id && collides(test, w));
-      if (!blocked) { hit.x = c.x; hit.y = c.y; moved = true; break; }
+    let placed = false;
+    for (const t of tries) {
+      if (t.x < 0 || t.x + hit.w > vc) continue;
+      const candidate = { ...hit, x: t.x, y: t.y };
+      if (!widgets.some(w => w.id !== hit.id && w.id !== mover.id && collides(candidate, w))) {
+        hit.x = t.x; hit.y = t.y; placed = true; break;
+      }
     }
-    if (!moved) {
-      // No valid candidate — place below the lowest widget to guarantee no overlap
-      const maxBottom = widgets.reduce((m, w) => w.id !== hit.id ? Math.max(m, w.y + w.h) : m, 0);
-      hit.y = maxBottom;
-    }
+    if (!placed) hit.y = mover.y + mover.h;
     pushDown(hit, widgets, depth + 1);
   }
 }
 
+// ── Compact: pull every widget up as far as possible ─────
 function compact(widgets) {
   const sorted = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x);
   const placed = [];
   for (const w of sorted) {
-    let newY = 0;
-    while (newY < w.y) {
-      if (!placed.some(p => collides({ ...w, y: newY }, p))) { w.y = newY; break; }
-      newY++;
+    for (let y = 0; y <= w.y; y++) {
+      if (!placed.some(p => collides({ ...w, y }, p))) { w.y = y; break; }
     }
     placed.push(w);
   }
 }
 
+// ── Find first free slot ──────────────────────────────────
 function findFreeSlot(ww, wh, widgets) {
-  for (let y = 0; y < 40; y++) {
-    for (let x = 0; x <= COLS - ww; x++) {
-      const rect = { id: '__new__', x, y, w: ww, h: wh };
-      if (!widgets.some(w => collides(rect, w))) return { x, y };
-    }
-  }
+  for (let y = 0; y < 40; y++)
+    for (let x = 0; x <= COLS - ww; x++)
+      if (!widgets.some(w => collides({ id:'__new__', x, y, w:ww, h:wh }, w))) return { x, y };
   return { x: 0, y: 0 };
 }
 
+// ── Full tidy: re-pack from top-left ─────────────────────
 function tidyLayout(widgets) {
   const sorted = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x);
   const placed = [];
   for (const w of sorted) {
-    let bestX = 0, bestY = 0;
-    outer: for (let y = 0; y < 40; y++) {
-      for (let x = 0; x <= COLS - w.w; x++) {
-        const rect = { id: w.id, x, y, w: w.w, h: w.h };
-        if (!placed.some(p => collides(rect, p))) { bestX = x; bestY = y; break outer; }
-      }
-    }
-    w.x = bestX; w.y = bestY;
-    placed.push({ ...w });
+    outer: for (let y = 0; y < 40; y++)
+      for (let x = 0; x <= COLS - w.w; x++)
+        if (!placed.some(p => collides({ id:w.id, x, y, w:w.w, h:w.h }, p))) {
+          w.x = x; w.y = y; placed.push({ ...w }); break outer;
+        }
   }
-}
-
-// ── Responsive flow layout (display-only, no state mutation) ─────────────
-// Returns a map of { [widgetId]: {x, y, w, h} } for widgets that need to be
-// repositioned to fit within the current visible column count.
-// Returns null when all widgets already fit at their stored positions.
-function computeFlowLayout() {
-  const vc = visibleCols();
-  // If every widget fits at its current stored position, no reflow needed
-  if (state.widgets.every(w => w.x + w.w <= vc)) return null;
-
-  // Sort by stored reading order (top→left) to preserve relative arrangement
-  const sorted = [...state.widgets].sort((a, b) => a.y - b.y || a.x - b.x);
-  const overrides = {};
-  const placed = [];
-
-  for (const w of sorted) {
-    const ww = Math.min(w.w, vc);
-    let best = { x: 0, y: 0 };
-    outer: for (let y = 0; y < 200; y++) {
-      for (let x = 0; x <= vc - ww; x++) {
-        const rect = { id: w.id, x, y, w: ww, h: w.h };
-        if (!placed.some(p => collides(rect, p))) { best = { x, y }; break outer; }
-      }
-    }
-    const ov = { x: best.x, y: best.y, w: ww, h: w.h };
-    overrides[w.id] = ov;
-    placed.push({ ...ov, id: w.id });
-  }
-  return overrides;
 }
 
 // ── Widget timer registry ─────────────────────────────────
@@ -193,10 +189,7 @@ function registerTimer(widgetId, id) {
 
 function cleanupWidget(widgetId) {
   const ids = _widgetTimers.get(widgetId);
-  if (ids) {
-    ids.forEach(id => { clearInterval(id); cancelAnimationFrame(id); });
-    _widgetTimers.delete(widgetId);
-  }
+  if (ids) { ids.forEach(id => { clearInterval(id); cancelAnimationFrame(id); }); _widgetTimers.delete(widgetId); }
   const el = document.querySelector(`.widget[data-id="${widgetId}"]`);
   if (el?._roDisconnect) { el._roDisconnect(); delete el._roDisconnect; }
 }

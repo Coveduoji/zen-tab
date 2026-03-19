@@ -39,13 +39,22 @@ function openCtxMenu(e, widgetId) {
   const wtype = wdata ? wdata.type : '';
   document.getElementById('ctx-edit-label').textContent = editLabelMap[wtype] || t('ctx_edit_generic');
   document.getElementById('ctx-edit').style.display = ['link','notes'].includes(wtype) ? 'flex' : 'none';
-  let x = e.clientX, y = e.clientY;
-  menu.style.opacity='0'; menu.style.display='block'; menu.classList.remove('open');
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  if (x+mw > window.innerWidth-12)  x = window.innerWidth-mw-12;
-  if (y+mh > window.innerHeight-12) y = window.innerHeight-mh-12;
-  menu.style.left=x+'px'; menu.style.top=y+'px'; menu.style.display='';
-  requestAnimationFrame(() => menu.classList.add('open'));
+
+  // Use visibility:hidden to measure without showing, never set inline opacity
+  menu.classList.remove('open');
+  menu.style.visibility = 'hidden';
+  menu.style.left = '0px'; menu.style.top = '0px';
+
+  requestAnimationFrame(() => {
+    let x = e.clientX, y = e.clientY;
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    if (x + mw > window.innerWidth  - 12) x = window.innerWidth  - mw - 12;
+    if (y + mh > window.innerHeight - 12) y = window.innerHeight - mh - 12;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+    menu.style.visibility = '';
+    menu.classList.add('open');
+  });
 }
 function closeCtxMenu() {
   document.getElementById('ctx-menu').classList.remove('open');
@@ -56,6 +65,8 @@ function closeCtxMenu() {
 const WD_ZH = ['周日','周一','周二','周三','周四','周五','周六'];
 const WD_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MO_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function tickClock() {} // legacy stub — top clock owns its own interval
+
 function initTopClock() {
   const hmEl   = document.getElementById('top-clock-hm');
   const dateEl = document.getElementById('top-clock-date');
@@ -67,18 +78,12 @@ function initTopClock() {
     if (dateEl) dateEl.textContent = lang==='zh' ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日` : `${WD_EN[n.getDay()]}, ${MO_EN[n.getMonth()]} ${n.getDate()}`;
   }
   tickTop();
-  let _clockId = setInterval(tickTop, 1000);
-  // Pause interval when tab is hidden; resume (with immediate tick) when visible again
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearInterval(_clockId); _clockId = null; }
-    else { tickTop(); _clockId = setInterval(tickTop, 1000); }
-  });
-  window.addEventListener('beforeunload', () => clearInterval(_clockId), { once: true });
+  setInterval(tickTop, 1000);
 }
 
 function setLang(l) {
   lang = l; state.settings.lang = l; saveState();
-  applyI18n();
+  applyI18n(); tickClock();
   if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
   if (document.getElementById('marketplace-bg')?.classList.contains('open')) renderMarket();
 }
@@ -95,7 +100,7 @@ function initPanels() {
   document.getElementById('fab-add').addEventListener('click', openMkt);
   document.getElementById('mkt-close').addEventListener('click', closeMkt);
   document.getElementById('fab-theme').addEventListener('click', function() {
-    const cyc = { light:'dark', dark:'light' };
+    const cyc = { light:'dark', dark:'monet', monet:'light' };
     applyTheme(cyc[state.settings.theme]||'dark', this);
     toast(t('theme_switched'), 'ok');
   });
@@ -125,16 +130,9 @@ function initPanels() {
     const wdata = state.widgets.find(w => w.id === _ctxWidgetId); closeCtxMenu();
     if (wdata?.config.url) navigator.clipboard.writeText(wdata.config.url).then(() => toast(t('link_copied'), 'ok'));
   });
-  document.getElementById('ctx-front').addEventListener('click', () => {
-    const idx = state.widgets.findIndex(w => w.id === _ctxWidgetId); closeCtxMenu(); if (idx < 0) return;
-    const [wdata] = state.widgets.splice(idx, 1); wdata.y=0; wdata.x=0;
-    const slot = findFreeSlot(wdata.w, wdata.h, state.widgets); wdata.x=slot.x; wdata.y=slot.y;
-    state.widgets.unshift(wdata);
-    saveState(); renderAll();
-  });
   document.getElementById('ctx-del').addEventListener('click', () => {
     const id = _ctxWidgetId; closeCtxMenu();
-    removeWidget(id);
+    removeWidget(id, true);
     toast(t('widget_removed'), '');
   });
 
@@ -145,7 +143,7 @@ function initPanels() {
     if (e.ctrlKey||e.metaKey) {
       if (e.key==='k') { e.preventDefault(); openCmd(); }
       else if (e.key==='a') { e.preventDefault(); openMkt(); }
-      else if (e.key==='t') { e.preventDefault(); const btn=document.getElementById('fab-theme'); applyTheme(state.settings.theme==='dark'?'light':'dark',btn); toast(t('theme_switched'),'ok'); }
+      else if (e.key==='t') { e.preventDefault(); const btn=document.getElementById('fab-theme'); const cyc={light:'dark',dark:'monet',monet:'light'}; applyTheme(cyc[state.settings.theme]||'dark',btn); toast(t('theme_switched'),'ok'); }
       else if (e.key==='e') { e.preventDefault(); editMode?exitEditMode():enterEditMode(); }
       else if (e.key==='p') { e.preventDefault(); pureMode?exitPureMode():enterPureMode(); }
     }

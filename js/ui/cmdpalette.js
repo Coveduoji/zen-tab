@@ -3,7 +3,7 @@ function getCmds() {
   const cmds = [
     { id:'aw', get n(){return t('cmd_add_widget');}, get h(){return t('cmd_add_w_h');}, ico:'✦', fn:()=>{closeCmd();openMkt();} },
     { id:'th', get n(){return t('cmd_toggle_theme');}, get h(){return t('cmd_toggle_t_h');}, ico:'◑',
-      fn(){const btn=document.getElementById('fab-theme');closeCmd();applyTheme(state.settings.theme==='dark'?'light':'dark',btn);toast(t('theme_switched'),'ok');} },
+      fn(){const btn=document.getElementById('fab-theme');closeCmd();const cyc={light:'dark',dark:'monet',monet:'light'};applyTheme(cyc[state.settings.theme]||'dark',btn);toast(t('theme_switched'),'ok');} },
     { id:'st', get n(){return t('cmd_settings');}, get h(){return t('cmd_settings_h');}, ico:'⚙', fn:()=>{closeCmd();openSettings();} },
     { id:'fs', get n(){return t('cmd_focus_search');}, get h(){return t('cmd_fs_h');}, ico:'🔍', fn:()=>{closeCmd();document.getElementById('search-input').focus();} },
     { id:'em', get n(){return t('cmd_edit_mode');}, get h(){return t('cmd_em_h');}, ico:'✏️', fn:()=>{closeCmd();editMode?exitEditMode():enterEditMode();} },

@@ -1,30 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    WIDGET INSTANCE MANAGER
    ═══════════════════════════════════════════════════════ */
-
-// Single pair of document-level listeners shared by all widgets (drag + resize).
-// Each mousedown registers its own handlers; mouseup clears them automatically.
-let _docMoveH = null, _docUpH = null;
-
-// Display-only layout overrides used when the window is too narrow to fit the
-// stored layout. Does NOT mutate state — cleared automatically when vc grows
-// back. Committed to state permanently when the user starts dragging/resizing.
-let _flowOverrides = null;
-
-// Commit any active flow overrides to state so drag/resize always start from
-// a clean, collision-free position.
-function _commitFlowOverrides() {
-  if (!_flowOverrides) return;
-  state.widgets.forEach(w => {
-    const ov = _flowOverrides[w.id];
-    if (ov) { w.x = ov.x; w.y = ov.y; w.w = ov.w; }
-  });
-  _flowOverrides = null;
-  debouncedSaveState();
-}
-document.addEventListener('mousemove', e => _docMoveH?.(e));
-document.addEventListener('mouseup',   e => { _docUpH?.(e); _docMoveH = null; _docUpH = null; });
-
 function saveWCfg(id, cfg) {
   const w = state.widgets.find(w=>w.id===id);
   if (w) { w.config=cfg; saveState(); }
@@ -47,6 +23,7 @@ function makeWidget(wdata, layoutOverrides) {
 
   const wR = 28; const wC = 2*Math.PI*wR;
   el.innerHTML = `
+    <div class="w-del-badge" title="Delete">−</div>
     ${isLink
       ? `<div class="w-controls" style="position:absolute;top:4px;right:4px;z-index:10;display:flex;gap:2px;opacity:0;transition:opacity var(--t)"></div>`
       : `<div class="w-header">
@@ -74,6 +51,13 @@ function makeWidget(wdata, layoutOverrides) {
 
   // Right-click context menu
   el.addEventListener('contextmenu', e => openCtxMenu(e, wdata.id));
+
+  // Delete badge
+  el.querySelector('.w-del-badge').addEventListener('click', e => {
+    e.stopPropagation();
+    removeWidget(wdata.id);
+    toast(t('widget_removed'), '');
+  });
 
   // Render body
   const body = el.querySelector('.w-body');
@@ -104,7 +88,7 @@ function makeWidget(wdata, layoutOverrides) {
 
     function startWLP(e) {
       if (editMode) return;
-      if (e.target.closest('.rh')) return;
+      if (e.target.closest('.w-del-badge') || e.target.closest('.rh')) return;
       if (e.button !== 0 && e.type === 'mousedown') return;
       wlpX = e.clientX; wlpY = e.clientY;
       wlpStart = null;
@@ -136,22 +120,18 @@ function makeWidget(wdata, layoutOverrides) {
   let dragging=false, dragStarted=false, offX=0, offY=0, ghost=null, origX=0, origY=0, downX=0, downY=0;
 
   el.addEventListener('mousedown', e => {
-    if (e.target.closest('.rh')) return;
+    if (e.target.closest('.rh') || e.target.closest('.w-del-badge')) return;
     if (e.button !== 0) return;
-    e.preventDefault();   // always preventDefault — blocks <a> native nav for all widget types
+    e.preventDefault();
     e.stopPropagation();
 
-    // Commit any display-only responsive overrides so drag starts from real positions
-    _commitFlowOverrides();
-
     dragging = false; dragStarted = false;
-    el._wasDragged = false;   // reset on every fresh press
+    el._wasDragged = false;
     origX = wdata.x; origY = wdata.y;
     downX = e.clientX; downY = e.clientY;
     const rect = el.getBoundingClientRect();
     offX = e.clientX - rect.left;
     offY = e.clientY - rect.top;
-    _docMoveH = onMove; _docUpH = onUp;
   });
 
   function onMove(e) {
@@ -162,6 +142,15 @@ function makeWidget(wdata, layoutOverrides) {
     if (!dragStarted) {
       if (Math.sqrt(dx*dx + dy*dy) < 6) return;
       dragStarted = true;
+
+      // Edit mode: if this widget is selected (size ≥ 1), hand off to multi-drag
+      if (editMode && _selected.size >= 1 && _selected.has(wdata.id)) {
+        if (startMultiDrag(e, el)) {
+          downX = 0; downY = 0;
+          return;
+        }
+      }
+
       dragging = true;
       el._wasDragged = true;   // set as soon as threshold crossed
       el.classList.add('dragging');
@@ -172,7 +161,7 @@ function makeWidget(wdata, layoutOverrides) {
       ghost = document.getElementById('drop-ghost');
       ghost.style.display = 'block';
       ghost.className = 'drop-ghost valid';
-      const curPx = wPxResponsive(wdata, _flowOverrides);
+      const curPx = wPx(wdata);
       ghost.style.cssText = `display:block;left:${curPx.left}px;top:${curPx.top}px;width:${curPx.width}px;height:${curPx.height}px;`;
     }
 
@@ -191,10 +180,8 @@ function makeWidget(wdata, layoutOverrides) {
     el.style.left = nx + 'px';
     el.style.top  = ny + 'px';
 
-    // 两种模式都对齐网格格子，ghost 始终显示网格落点
-    // 用实际渲染宽度（不超过 vc）计算 snap 上限
     const renderW = Math.min(wdata.w, vc);
-    const snapCol = Math.max(0, Math.min(vc - renderW, Math.round(nx/(colW+GAP))));
+    const snapCol = Math.max(0, Math.min(vc - renderW, Math.round(nx / (colW + GAP))));
     const snapRow = Math.max(0, Math.round(ny/(rowH()+GAP)));
     const ghostRect = { id:'__ghost__', x:snapCol, y:snapRow, w:renderW, h:wdata.h };
     const hits = getCollisions(ghostRect, wdata.id, state.widgets);
@@ -221,32 +208,26 @@ function makeWidget(wdata, layoutOverrides) {
 
     if (!dragging) {
       dragStarted = false;
-      // Not a drag — this is a clean click.
-      if (!el._wasDragged) {
-        // In edit mode: toggle multi-select
-        if (editMode) {
-          toggleWidgetSelection(wdata.id);
-        } else if (isLink) {
-          // Normal mode: fire link navigation (mousedown did preventDefault)
-          window.open(wdata.config.url, '_blank', 'noopener,noreferrer');
-        }
+      // Short press in edit mode = toggle selection
+      if (editMode) {
+        toggleSelect(wdata.id);
+        el._wasDragged = false;
+        downX = 0; downY = 0;
+        return;
+      }
+      // Not a drag — clean click, fire navigation for link widgets
+      if (isLink && !el._wasDragged && !editMode) {
+        window.open(wdata.config.url, '_blank', 'noopener,noreferrer');
       }
       el._wasDragged = false;
       return;
     }
 
     dragging = false; dragStarted = false;
-    el.classList.remove('dragging');
-    // Suppress transition on the dragged element so it snaps instantly to the
-    // grid position without an animation "bounce". Other widgets pushed by
-    // compact() keep their transitions and slide smoothly.
-    el.style.transition = 'none';
-    el.style.zIndex = '';
     document.body.classList.remove('any-dragging');
 
     if (ghost) { ghost.style.display = 'none'; ghost = null; }
 
-    // Keep _wasDragged=true briefly to suppress any late-firing click event
     setTimeout(() => { el._wasDragged = false; }, 300);
 
     const newX = wdata._snapX ?? origX;
@@ -255,16 +236,44 @@ function makeWidget(wdata, layoutOverrides) {
     delete wdata._snapX; delete wdata._snapY;
 
     pushDown(wdata, state.widgets);
+    compact(state.widgets);
     clamp(wdata);
     debouncedSaveState();
-    positionAll(); // only update CSS positions — no DOM teardown → no flash
+
+    const finalPx = wPx(wdata);
+
+    // Add no-anim BEFORE removing .dragging so wIn never gets a chance to replay
+    el.classList.add('no-anim');
+    el.style.transition = 'none';
+    el.style.left   = finalPx.left   + 'px';
+    el.style.top    = finalPx.top    + 'px';
+    el.style.width  = finalPx.width  + 'px';
+    el.style.height = finalPx.height + 'px';
+    void el.offsetHeight;
+    el.classList.remove('dragging');
+    el.style.zIndex = String(10 + wdata.y);
+
+    requestAnimationFrame(() => {
+      el.style.transition = '';
+      el.style.animation  = '';
+      const canvas = document.getElementById('grid-canvas');
+      state.widgets.forEach(w => {
+        if (w.id === wdata.id) return;
+        const wEl = canvas.querySelector(`.widget[data-id="${w.id}"]`);
+        if (!wEl) return;
+        const px = wPx(w);
+        wEl.style.left   = px.left   + 'px';
+        wEl.style.top    = px.top    + 'px';
+        wEl.style.width  = px.width  + 'px';
+        wEl.style.height = px.height + 'px';
+        wEl.style.zIndex = String(10 + w.y);
+      });
+    });
   }
 
-  // _unbindDrag clears singleton handlers (if this widget owns them) and resize handles
-  el._unbindDrag = () => {
-    if (_docMoveH === onMove) { _docMoveH = null; _docUpH = null; }
-    el.querySelectorAll('.rh').forEach(h => h._unbind?.());
-  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
+  el._unbindDrag = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
 
   /* ────────── RESIZE ────────── */
   el.querySelectorAll('.rh').forEach(handle => {
@@ -274,13 +283,10 @@ function makeWidget(wdata, layoutOverrides) {
     handle.addEventListener('mousedown', e => {
       if (!editMode) return;
       e.preventDefault(); e.stopPropagation();
-      // Commit display-only overrides so resize starts from real positions
-      _commitFlowOverrides();
       resizing=true; rsX=e.clientX; rsY=e.clientY;
       rsW=wdata.w; rsH=wdata.h;
       rsColX=wdata.x; rsRowY=wdata.y;
       el.style.transition='none';
-      _docMoveH = onResizeMove; _docUpH = onResizeUp;
     });
 
     function onResizeMove(e) {
@@ -315,7 +321,7 @@ function makeWidget(wdata, layoutOverrides) {
         wdata.w = sqClamped; wdata.h = sqClamped;
       }
 
-      const px = wPxResponsive(wdata, null);
+      const px = wPx(wdata);
       el.style.left=px.left+'px'; el.style.top=px.top+'px';
       el.style.width=px.width+'px'; el.style.height=px.height+'px';
     }
@@ -324,11 +330,14 @@ function makeWidget(wdata, layoutOverrides) {
       if (!resizing) return; resizing=false;
       el.style.transition='';
       pushDown(wdata, state.widgets);
+      compact(state.widgets);
       clamp(wdata); debouncedSaveState();
       renderAll();
     }
 
-    handle._unbind = () => { if (_docMoveH === onResizeMove) { _docMoveH = null; _docUpH = null; } };
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup',   onResizeUp);
+    handle._unbind=()=>{ document.removeEventListener('mousemove',onResizeMove); document.removeEventListener('mouseup',onResizeUp); };
   });
 
   return el;
@@ -343,27 +352,33 @@ function addWidget(wdata) {
     wdata.x = slot.x; wdata.y = slot.y;
   }
   state.widgets.push(wdata);
+  compact(state.widgets);
   saveState();
   renderAll();
   updateEmptyHint();
 }
 
-function removeWidget(id) {
-  const el = document.querySelector(`.widget[data-id="${id}"]`);
-  if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
-  localStorage.removeItem('dash_limg_' + id);
-  state.widgets = state.widgets.filter(w=>w.id!==id);
-  // Keep selection state in sync
-  if (typeof selectedIds !== 'undefined') { selectedIds.delete(id); updateSelectionUI(); }
-  saveState();
-  updateEmptyHint();
+function removeWidget(id, skipConfirm=false) {
+  function doRemove() {
+    const el = document.querySelector(`.widget[data-id="${id}"]`);
+    if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
+    // Clean up any stored custom image for this link widget
+    localStorage.removeItem('dash_limg_' + id);
+    state.widgets = state.widgets.filter(w=>w.id!==id);
+    compact(state.widgets);
+    saveState();
+    updateEmptyHint();
+  }
+  if (skipConfirm) { doRemove(); return; }
+  doRemove(); // Delete badge already confirmed by user clicking −
 }
 
 function renderAll() {
   const canvas = document.getElementById('grid-canvas');
   canvas.querySelectorAll('.widget').forEach(el=>{ cleanupWidget(el.dataset.id); el._unbindDrag?.(); el.remove(); });
 
-  const layoutOverrides = _flowOverrides;
+  // Compute responsive layout overrides (null when full-width)
+  const layoutOverrides = computeResponsiveLayout();
 
   // Compute canvas height from the effective (possibly overridden) layout
   let maxRow = 0;
@@ -392,9 +407,13 @@ function updateEmptyHint() {
  */
 function positionAll() {
   const canvas = document.getElementById('grid-canvas');
-  const layoutOverrides = _flowOverrides;
+  const layoutOverrides = computeResponsiveLayout();
 
-  // Recalculate canvas height (read phase — before any writes)
+  // Build id→element map in one pass — no per-widget querySelector
+  const elMap = new Map();
+  canvas.querySelectorAll('.widget').forEach(el => elMap.set(el.dataset.id, el));
+
+  // Read phase: canvas height
   let maxRow = 0;
   state.widgets.forEach(w => {
     const ov = layoutOverrides && layoutOverrides[w.id];
@@ -402,11 +421,11 @@ function positionAll() {
     maxRow = Math.max(maxRow, effY + w.h);
   });
 
-  // Batch all DOM writes in a single rAF to avoid layout thrashing
+  // Write phase: single rAF, no interleaved reads
   requestAnimationFrame(() => {
     canvas.style.minHeight = Math.max(ry(maxRow+2), document.getElementById('grid-outer').clientHeight-40) + 'px';
     state.widgets.forEach(w => {
-      const el = canvas.querySelector(`.widget[data-id="${w.id}"]`);
+      const el = elMap.get(w.id);
       if (!el || el.classList.contains('dragging')) return;
       const px = wPxResponsive(w, layoutOverrides);
       el.style.left   = px.left   + 'px';
@@ -421,10 +440,6 @@ function positionAll() {
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    _flowOverrides = computeFlowLayout();
-    buildGridBg();
-    renderAll();
-  }, 120);
+  invalidateLayoutCache();
+  resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); positionAll(); }, 120);
 });
-window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });

@@ -90,11 +90,15 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
     /* ══════════════════════════════════════════
        MONTH VIEW
        ══════════════════════════════════════════ */
+    let _lastMonthKey = '', _lastWeekKey = '';
+
     function renderMonth() {
+      const all = loadTasks();
+      const y = cursor.getFullYear(), m = cursor.getMonth();
+      const key = `${y}-${m}-${JSON.stringify(all)}`;
+      if (key === _lastMonthKey) return;
+      _lastMonthKey = key; _lastWeekKey = '';
       content_area.innerHTML = '';
-      const all  = loadTasks();
-      const y    = cursor.getFullYear();
-      const m    = cursor.getMonth();  // 0-based
       const td   = todayStr();
 
       /* header label */
@@ -193,9 +197,13 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
        WEEK VIEW
        ══════════════════════════════════════════ */
     function renderWeek() {
+      const all = loadTasks();
+      const td  = todayStr();
+      const weekStart = new Date(cursor); weekStart.setDate(cursor.getDate() - cursor.getDay());
+      const key = `${weekStart.toDateString()}-${JSON.stringify(all)}`;
+      if (key === _lastWeekKey) return;
+      _lastWeekKey = key; _lastMonthKey = '';
       content_area.innerHTML = '';
-      const all  = loadTasks();
-      const td   = todayStr();
       const days = weekDays(cursor);
 
       const MONTHS_SHORT = lang==='zh'

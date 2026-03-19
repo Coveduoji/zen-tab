@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="monet" data-monet-hue="lavender">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,8 +17,11 @@
   (function() {
     try {
       var s = JSON.parse(localStorage.getItem('dash_v3'));
-      var th = (s && s.settings && s.settings.theme) || 'dark';
+      var th  = (s && s.settings && s.settings.theme)    || 'monet';
+      var hue = (s && s.settings && s.settings.monetHue) || 'lavender';
       document.documentElement.setAttribute('data-theme', th);
+      if (th === 'monet') document.documentElement.setAttribute('data-monet-hue', hue);
+      else document.documentElement.removeAttribute('data-monet-hue');
     } catch(e) {}
   })();
 </script>
@@ -81,16 +84,21 @@
     <div class="ctx-item" id="ctx-edit"><span class="ctx-ico">✏️</span> <span id="ctx-edit-label">编辑</span></div>
     <div class="ctx-item" id="ctx-link"><span class="ctx-ico">🔗</span> <span id="ctx-link-label">复制链接</span></div>
     <div class="ctx-sep"></div>
-    <div class="ctx-item" id="ctx-front"><span class="ctx-ico">⬆</span> <span>移到最前</span></div>
-    <div class="ctx-sep"></div>
-    <div class="ctx-item danger" id="ctx-del"><span class="ctx-ico">🗑</span> <span>删除组件</span></div>
+    <div class="ctx-item danger" id="ctx-del"><span class="ctx-ico">🗑</span> <span data-i18n="del_btn">删除</span></div>
+  </div>
+
+  <!-- TRASH ZONE (edit mode, multi-select) -->
+  <div id="trash-zone">
+    <div id="trash-zone-inner">
+      <span id="trash-icon">🗑</span>
+      <span id="trash-label"></span>
+    </div>
   </div>
 
   <!-- EDIT MODE BAR -->
   <div id="edit-bar">
     <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
     <div id="edit-bar-actions">
-      <button id="btn-del-sel" style="display:none"></button>
       <button class="edit-action-btn tidy" id="btn-tidy" data-i18n="tidy_btn"></button>
       <button class="edit-action-btn done" id="btn-done" data-i18n="done_btn"></button>
     </div>

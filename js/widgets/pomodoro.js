@@ -292,9 +292,13 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
     requestAnimationFrame(applyPomScale);
 
     if (typeof ResizeObserver !== 'undefined' && pomWidget) {
-      const ro = new ResizeObserver(applyPomScale);
+      let _roRaf = null;
+      const ro = new ResizeObserver(() => {
+        if (_roRaf) return;
+        _roRaf = requestAnimationFrame(() => { _roRaf = null; applyPomScale(); });
+      });
       ro.observe(pomWidget);
-      pomWidget._roDisconnect = () => ro.disconnect();
+      pomWidget._roDisconnect = () => { ro.disconnect(); if (_roRaf) cancelAnimationFrame(_roRaf); };
     }
   }
 });

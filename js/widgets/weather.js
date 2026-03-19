@@ -138,13 +138,6 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         const cached = weatherCache.load();
         if (cached) { showData(cached); return; }
       }
-      // Offline: show stale cache or a brief message — don't attempt network
-      if (!navigator.onLine) {
-        const stale = weatherCache.loadStale();
-        if (stale) { showData(stale); return; }
-        showMsg(lang === 'zh' ? '⚡ 离线' : '⚡ Offline');
-        return;
-      }
       showMsg(t('weather_loading'));
 
       function doFetch(la, lo) {
@@ -188,8 +181,7 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         _weatherPos = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         doFetch(_weatherPos.latitude, _weatherPos.longitude);
       }, () => {
-        // Permission denied or timed out — show persistent prompt
-
+        // Permission denied — show persistent prompt instead of a fleeting toast
         row.style.display = 'none';
         msgEl.innerHTML = '';
         const permDiv = document.createElement('div');
@@ -207,7 +199,7 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         });
         permDiv.append(permText, permBtn);
         msgEl.appendChild(permDiv);
-      }, { timeout: 8000, maximumAge: 5 * 60 * 1000 });
+      });
     }
 
     /* ── Events ── */
@@ -256,10 +248,13 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
     requestAnimationFrame(applyWeatherScale);
 
     if (typeof ResizeObserver !== 'undefined' && weatherWidget) {
-      const ro = new ResizeObserver(applyWeatherScale);
+      let _roRaf = null;
+      const ro = new ResizeObserver(() => {
+        if (_roRaf) return;
+        _roRaf = requestAnimationFrame(() => { _roRaf = null; applyWeatherScale(); });
+      });
       ro.observe(weatherWidget);
-      // Store disconnect in widget element for ResizeObserver teardown
-      weatherWidget._roDisconnect = () => ro.disconnect();
+      weatherWidget._roDisconnect = () => { ro.disconnect(); if (_roRaf) cancelAnimationFrame(_roRaf); };
     }
   }
 });

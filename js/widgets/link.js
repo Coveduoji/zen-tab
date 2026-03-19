@@ -47,30 +47,6 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
       });
     }
     // Edit button
-    setTimeout(() => {
-      const w = body.closest('.widget');
-      if (!w) return;
-      const ctrl = w.querySelector('.w-controls');
-      if (ctrl && !ctrl.querySelector('.edit-lnk-btn')) {
-        const eb = document.createElement('button');
-        eb.className='w-btn edit-lnk-btn'; eb.textContent='✎'; eb.title='Edit';
-        eb.style.cssText='width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;transition:all .15s';
-        eb.onmouseenter=()=>{eb.style.color='var(--text)';eb.style.background='var(--bg)';};
-        eb.onmouseleave=()=>{eb.style.color='var(--text-muted)';eb.style.background='transparent';};
-        eb.addEventListener('mousedown', e => e.stopPropagation()); // prevent drag system from firing navigation
-        eb.addEventListener('click', e => {
-          e.stopPropagation();
-          e.preventDefault();
-          showLinkModal(cfg, saved => {
-            cfg.name = saved.name; cfg.url = saved.url;
-            if (saved.emoji) cfg.emoji = saved.emoji; else delete cfg.emoji;
-            if (saved.customImg) cfg.customImg = saved.customImg; else delete cfg.customImg;
-            saveWCfg(id, cfg); draw();
-          }, true, id);
-        });
-        ctrl.insertBefore(eb, ctrl.firstChild);
-      }
-    }, 0);
     draw();
   }
 });

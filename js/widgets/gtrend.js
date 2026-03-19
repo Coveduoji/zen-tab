@@ -49,7 +49,7 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
       const nameEl = document.createElement('span'); nameEl.className = 'gt-name';
       nameEl.textContent = item.repoName;
       const starsEl = document.createElement('span'); starsEl.className = 'gt-stars';
-      starsEl.textContent = '★ ' + (item.stars || '—');
+      starsEl.innerHTML = '★ ' + (item.stars || '—');
       row1.append(rankEl, nameEl, starsEl);
       a.appendChild(row1);
 
@@ -118,13 +118,6 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
       if (!force) {
         const cached = gtrendCache.load();
         if (cached) { render(cached, false); return; }
-      }
-      // Offline: use stale cache or show brief message
-      if (!navigator.onLine) {
-        const stale = gtrendCache.loadStale();
-        if (stale && stale.length > 0) { render(stale, true); return; }
-        list.innerHTML = '<div class="gt-msg">⚡ ' + (lang === 'zh' ? '离线' : 'Offline') + '</div>';
-        return;
       }
       showLoading();
 

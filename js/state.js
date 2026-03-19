@@ -4,7 +4,7 @@ const DEF_WIDGETS = [
   { id:'wl1', type:'link', x:0, y:0, w:1, h:1, config:{ name:'zen-tab', url:'https://github.com/Coveduoji/zen-tab' } },
 ];
 const DEF_SETTINGS = {
-  theme: 'dark', engine: 'google', lang: 'zh',
+  theme: 'monet', monetHue: 'lavender', engine: 'google', lang: 'zh',
   background: { type:'default', value:'', overlay:0, blur:0, brightness:1 }
 };
 
@@ -47,29 +47,45 @@ function saveState() {
   const bgValue = state.settings.background?.value || '';
   const isBgImg = state.settings.background?.type === 'image' && bgValue.startsWith('data:');
   try {
-    const slim = JSON.parse(JSON.stringify({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings }));
+    // Avoid JSON.parse(JSON.stringify(state)) — build serializable object directly
+    // replacing large data: blobs with placeholders without mutating state
     if (isBgImg) {
       localStorage.setItem('dash_bg_img', bgValue);
-      slim.settings.background.value = '__dash_bg_img__';
     } else {
       localStorage.removeItem('dash_bg_img');
     }
-    slim.widgets.forEach(w => {
+
+    const slimWidgets = state.widgets.map(w => {
       if (w.type === 'link' && w.config?.customImg?.startsWith('data:')) {
         localStorage.setItem('dash_limg_' + w.id, w.config.customImg);
-        w.config.customImg = '__dash_limg__';
-      } else if (w.type === 'link' && !w.config?.customImg) {
+        // shallow clone config with placeholder — no deep copy of entire state
+        return { ...w, config: { ...w.config, customImg: '__dash_limg__' } };
+      }
+      if (w.type === 'link' && !w.config?.customImg) {
         localStorage.removeItem('dash_limg_' + w.id);
       }
+      return w;
     });
-    localStorage.setItem('dash_v3', JSON.stringify(slim));
+
+    const slimSettings = isBgImg
+      ? { ...state.settings, background: { ...state.settings.background, value: '__dash_bg_img__' } }
+      : state.settings;
+
+    localStorage.setItem('dash_v3', JSON.stringify({
+      version: STORAGE_VERSION,
+      widgets: slimWidgets,
+      settings: slimSettings,
+    }));
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
       try {
-        const minimal = JSON.parse(JSON.stringify({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings }));
-        if (isBgImg) minimal.settings.background.value = '__dash_bg_img__';
-        minimal.widgets.forEach(w => { if (w.type === 'link') delete w.config?.customImg; });
-        localStorage.setItem('dash_v3', JSON.stringify(minimal));
+        const minimal = state.widgets.map(w =>
+          w.type === 'link' ? { ...w, config: { ...w.config, customImg: undefined } } : w
+        );
+        const minSettings = isBgImg
+          ? { ...state.settings, background: { ...state.settings.background, value: '__dash_bg_img__' } }
+          : state.settings;
+        localStorage.setItem('dash_v3', JSON.stringify({ version: STORAGE_VERSION, widgets: minimal, settings: minSettings }));
       } catch(_) {}
       toast(lang === 'zh' ? '⚠ 存储空间不足，自定义图标可能未保存' : '⚠ Storage full — custom icons may not be saved', 'err');
     }
@@ -91,6 +107,3 @@ state.widgets.forEach(w => {
 });
 
 const debouncedSaveState = debounce(saveState, 500);
-
-// Flush state immediately on tab close — bypasses the 500 ms debounce window
-window.addEventListener('beforeunload', saveState);
