@@ -21,7 +21,7 @@ function visibleCols() {
   const fit = Math.floor((w + GAP) / (CELL_TARGET + GAP));
   return Math.max(1, Math.min(COLS_MAX, fit));
 }
-function gw()      { return document.getElementById('grid-outer').clientWidth - 48; }
+function gw()      { return Math.max(document.getElementById('grid-outer').clientWidth - 48, 720); }
 function cw()      { const vc = visibleCols(); return (gw() - GAP * (vc - 1)) / vc; }
 function rowH()    { return cw(); }
 function cx(col)   { return col * (cw() + GAP); }
