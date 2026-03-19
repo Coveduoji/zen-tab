@@ -11,18 +11,13 @@ var pureMode = false;
 
   // 2. Apply theme + background immediately (before first paint)
   applyTheme(state.settings.theme, null);
-  if (state.settings.theme === 'monet' && state.settings.monetHue) {
-    document.documentElement.setAttribute('data-monet-hue', state.settings.monetHue);
-  }
   applyBackground();
   if (state.settings.background?.palette) {
     setTimeout(() => applyBgPalette(state.settings.background.palette), 0);
   }
 
-  // 3. Layout: normalise coords, compact
+  // 3. Layout: normalise coords to visible columns
   normalizeToVc();
-  if (state.settings.compactMode !== false) compact(state.widgets);
-  // Only save if compact actually changed widget positions (first load or stale data)
   if (!localStorage.getItem('dash_v3')) saveState();
 
   // 4. Init UI subsystems

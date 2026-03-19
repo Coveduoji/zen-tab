@@ -95,7 +95,7 @@ function initPanels() {
   document.getElementById('fab-add').addEventListener('click', openMkt);
   document.getElementById('mkt-close').addEventListener('click', closeMkt);
   document.getElementById('fab-theme').addEventListener('click', function() {
-    const cyc = { light:'dark', dark:'monet', monet:'light' };
+    const cyc = { light:'dark', dark:'light' };
     applyTheme(cyc[state.settings.theme]||'dark', this);
     toast(t('theme_switched'), 'ok');
   });
@@ -130,7 +130,6 @@ function initPanels() {
     const [wdata] = state.widgets.splice(idx, 1); wdata.y=0; wdata.x=0;
     const slot = findFreeSlot(wdata.w, wdata.h, state.widgets); wdata.x=slot.x; wdata.y=slot.y;
     state.widgets.unshift(wdata);
-    if (state.settings.compactMode !== false) compact(state.widgets);
     saveState(); renderAll();
   });
   document.getElementById('ctx-del').addEventListener('click', () => {
@@ -147,7 +146,7 @@ function initPanels() {
     if (e.ctrlKey||e.metaKey) {
       if (e.key==='k') { e.preventDefault(); openCmd(); }
       else if (e.key==='a') { e.preventDefault(); openMkt(); }
-      else if (e.key==='t') { e.preventDefault(); const btn=document.getElementById('fab-theme'); const cyc={light:'dark',dark:'monet',monet:'light'}; applyTheme(cyc[state.settings.theme]||'dark',btn); toast(t('theme_switched'),'ok'); }
+      else if (e.key==='t') { e.preventDefault(); const btn=document.getElementById('fab-theme'); applyTheme(state.settings.theme==='dark'?'light':'dark',btn); toast(t('theme_switched'),'ok'); }
       else if (e.key==='e') { e.preventDefault(); editMode?exitEditMode():enterEditMode(); }
       else if (e.key==='p') { e.preventDefault(); pureMode?exitPureMode():enterPureMode(); }
     }

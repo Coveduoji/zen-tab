@@ -57,11 +57,9 @@ function createQuickLink(prefill={}) {
 }
 
 function renderSettings() {
-  const dark=state.settings.theme==='dark', isMonet=state.settings.theme==='monet';
-  const monetHue=state.settings.monetHue||'lavender', zh=lang==='zh';
-  const isCompact=state.settings.compactMode!==false;
+  const dark=state.settings.theme==='dark', zh=lang==='zh';
   const bg=state.settings.background||{...BG_DEFAULTS};
-  const thL=(!dark&&!isMonet)?' active':'', thD=dark?' active':'', thM=isMonet?' active':'';
+  const thL=!dark?' active':'', thD=dark?' active':'';
   const lzh=zh?' active-2':'', len=!zh?' active-2':'';
 
   document.getElementById('settings-body').innerHTML = `
@@ -74,19 +72,6 @@ function renderSettings() {
         <button class="theme-card tc-light${thL}" id="sl" aria-label="${t('theme_light')}">
           <div class="tc-preview"><div class="tc-bar tc-bar-wide"></div><div class="tc-bar tc-bar-mid"></div><div class="tc-bar tc-bar-thin"></div></div>
           <span class="tc-label">☀️ ${t('theme_light')}</span></button>
-        <button class="theme-card tc-monet${thM}" id="sm" aria-label="${t('theme_monet')}">
-          <div class="tc-preview" style="background:${MONET_HUES.find(h=>h.id===monetHue)?.grad||'linear-gradient(135deg,#dfe7ff,#f3e8ff,#e8f6ff)'}">
-            <div class="tc-bar tc-bar-wide" style="background:${MONET_HUES.find(h=>h.id===monetHue)?.accent||'#6c5ce7'};opacity:.9"></div>
-            <div class="tc-bar tc-bar-mid" style="background:rgba(255,255,255,0.6)"></div>
-            <div class="tc-bar tc-bar-thin" style="background:rgba(255,255,255,0.35)"></div>
-          </div>
-          <span class="tc-label">🍂 ${t('theme_monet')}</span></button>
-      </div>
-      <div class="s-sec-title" style="margin-bottom:8px;margin-top:2px">${zh?'莫奈色调':'Monet Palette'}</div>
-      <div class="monet-hues-full" id="monet-hues">
-        ${MONET_HUES.map(h=>`<button class="monet-hue-btn${monetHue===h.id?' active':''}" data-hue="${h.id}" title="${zh?h.label:h.labelEn}">
-          <div class="mhb-preview" style="background:${h.grad||h.bg}"><div class="mhb-bar" style="background:${h.accent};width:80%;opacity:.9"></div><div class="mhb-bar" style="background:rgba(255,255,255,0.65);width:55%"></div><div class="mhb-bar" style="background:rgba(255,255,255,0.35);width:38%"></div></div>
-          <span class="mhb-label">${zh?h.label:h.labelEn}</span></button>`).join('')}
       </div>
       <div class="s-sec-title" style="margin-top:14px">${zh?'自定义背景':'Custom Background'}</div>
       <div class="bgc" id="bgc" tabindex="0" role="button" aria-label="${zh?'上传背景图片':'Upload background image'}">
@@ -116,8 +101,7 @@ function renderSettings() {
     </div>
     <div class="s-section">
       <div class="s-sec-title">${zh?'布局':'Layout'}</div>
-      <div class="s-toggle-row"><div><div class="s-label">${t('compact_mode')}</div><div class="s-sub">${t('compact_mode_d')}</div></div><label class="s-toggle"><input type="checkbox" id="s-compact" ${isCompact?'checked':''}><span class="s-toggle-track"></span></label></div>
-      <div class="s-toggle-row" style="margin-top:4px"><div><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><div class="s-sub">${zh?'只显示时间和搜索框':'Show only clock and search'}</div></div><label class="s-toggle"><input type="checkbox" id="s-pure" ${pureMode?'checked':''}><span class="s-toggle-track"></span></label></div>
+      <div class="s-toggle-row"><div><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><div class="s-sub">${zh?'只显示时间和搜索框':'Show only clock and search'}</div></div><label class="s-toggle"><input type="checkbox" id="s-pure" ${pureMode?'checked':''}><span class="s-toggle-track"></span></label></div>
     </div>
     <div class="s-section">
       <div class="s-sec-title">${t('active_widgets')}</div>
@@ -150,15 +134,8 @@ function renderSettings() {
   const body = document.getElementById('settings-body');
   body.querySelector('#sl')?.addEventListener('click', function(){applyTheme('light',this);});
   body.querySelector('#sd')?.addEventListener('click', function(){applyTheme('dark',this);});
-  body.querySelector('#sm')?.addEventListener('click', function(){applyTheme('monet',this);});
-  body.querySelectorAll('.monet-hue-btn').forEach(btn=>btn.addEventListener('click',function(e){e.stopPropagation();applyMonetHue(this.dataset.hue,this);}));
   body.querySelector('#slzh')?.addEventListener('click',()=>setLang('zh'));
   body.querySelector('#slen')?.addEventListener('click',()=>setLang('en'));
-  body.querySelector('#s-compact')?.addEventListener('change', e=>{
-    state.settings.compactMode=e.target.checked;
-    if (state.settings.compactMode){compact(state.widgets);saveState();renderAll();}else saveState();
-    toast(state.settings.compactMode?(zh?'磁吸布局已开启':'Compact layout ON'):(zh?'磁吸布局已关闭':'Compact layout OFF'),'ok');
-  });
   body.querySelector('#s-pure')?.addEventListener('change', e=>{ e.target.checked?enterPureMode():exitPureMode(); });
 
   const bgFileInput=document.getElementById('bg-file-input');

@@ -4,8 +4,8 @@ const DEF_WIDGETS = [
   { id:'wl1', type:'link', x:0, y:0, w:1, h:1, config:{ name:'zen-tab', url:'https://github.com/Coveduoji/zen-tab' } },
 ];
 const DEF_SETTINGS = {
-  theme: 'monet', monetHue: 'lavender', engine: 'google', lang: 'zh',
-  compactMode: true, background: { type:'default', value:'', overlay:0, blur:0, brightness:1 }
+  theme: 'dark', engine: 'google', lang: 'zh',
+  background: { type:'default', value:'', overlay:0, blur:0, brightness:1 }
 };
 
 function loadState() {

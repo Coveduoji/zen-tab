@@ -238,7 +238,6 @@ function makeWidget(wdata, layoutOverrides) {
     delete wdata._snapX; delete wdata._snapY;
 
     pushDown(wdata, state.widgets);
-    if (state.settings.compactMode !== false) compact(state.widgets);
     clamp(wdata);
     debouncedSaveState();
     positionAll(); // only update CSS positions — no DOM teardown → no flash
@@ -306,7 +305,6 @@ function makeWidget(wdata, layoutOverrides) {
       if (!resizing) return; resizing=false;
       el.style.transition='';
       pushDown(wdata, state.widgets);
-      if (state.settings.compactMode !== false) compact(state.widgets);
       clamp(wdata); debouncedSaveState();
       renderAll();
     }
@@ -326,7 +324,6 @@ function addWidget(wdata) {
     wdata.x = slot.x; wdata.y = slot.y;
   }
   state.widgets.push(wdata);
-  if (state.settings.compactMode !== false) compact(state.widgets);
   saveState();
   renderAll();
   updateEmptyHint();
@@ -339,7 +336,6 @@ function removeWidget(id, skipConfirm=false) {
     // Clean up any stored custom image for this link widget
     localStorage.removeItem('dash_limg_' + id);
     state.widgets = state.widgets.filter(w=>w.id!==id);
-    if (state.settings.compactMode !== false) compact(state.widgets);
     saveState();
     updateEmptyHint();
   }

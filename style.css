@@ -104,153 +104,6 @@
   --text-on-dark:   #ffffff;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MONET / MATERIAL YOU — 6 gradient palettes
-   Each hue: soft gradient body BG + glass-card tokens
-   ═══════════════════════════════════════════════════════════════ */
-
-/* ── Monet shared tokens ── */
-[data-theme="monet"] {
-  /* --surface = glass for widgets; --card = solid white for modals */
-  --surface:       rgba(255,255,255,0.52);
-  --surface-glass: rgba(255,255,255,0.52);
-  --border:        rgba(255,255,255,0.70);
-  --border-hover:  rgba(255,255,255,0.90);
-  --card:          #ffffff;           /* modals stay solid */
-  --card-border:   rgba(0,0,0,0.10);
-  --card-hover:    #f4f4f8;
-  --bg2:           rgba(255,255,255,0.30);
-  --text-primary:  #2d3436;
-  --text-secondary:#4a5568;
-  --text:          var(--text-primary);
-  --text-muted:    var(--text-secondary);
-  --text-dim:      #8896a8;
-  --shadow:        0 8px 32px rgba(0,0,0,.12);
-  --shadow-sm:     0 2px 12px rgba(0,0,0,.08);
-  --modal-overlay: rgba(160,170,210,0.45);
-  --pure-overlay:  transparent;
-  --text-on-accent: #ffffff;
-  --text-on-dark:   #ffffff;
-}
-
-/* Monet: widgets need backdrop-filter to render glass effect */
-[data-theme="monet"] .widget {
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
-}
-[data-theme="monet"] .widget:hover {
-  --surface: rgba(255,255,255,0.68);
-}
-
-/* ── 1. Lavender (default / purple-violet, Material You flagship) ── */
-[data-theme="monet"],
-[data-theme="monet"][data-monet-hue="lavender"] {
-  --monet-grad:  linear-gradient(135deg, #dfe7ff 0%, #f3e8ff 50%, #e8f6ff 100%);
-  --monet-ripple:#dfe7ff;
-  --bg:          #dfe7ff;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #6c5ce7;
-  --accent2:     #a29bfe;
-  --accent3:     #74b9ff;
-  --danger:      #d63031;
-  --text:        #2d3436;
-  --text-muted:  #4a5568;
-  --text-dim:    #8896a8;
-}
-
-/* ── 2. Rose (dusty rose-pink) ── */
-[data-theme="monet"][data-monet-hue="rose"] {
-  --monet-grad:  linear-gradient(135deg, #ffd6e0 0%, #ffecf0 50%, #ffe8f5 100%);
-  --monet-ripple:#ffd6e0;
-  --bg:          #ffd6e0;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #e84393;
-  --accent2:     #fd79a8;
-  --accent3:     #a29bfe;
-  --danger:      #d63031;
-  --text:        #2d3436;
-  --text-muted:  #4a5568;
-  --text-dim:    #8896a8;
-}
-
-/* ── 3. Ocean (cool teal-sky) ── */
-[data-theme="monet"][data-monet-hue="ocean"] {
-  --monet-grad:  linear-gradient(135deg, #d4f1f9 0%, #e8f4fd 50%, #d6eaff 100%);
-  --monet-ripple:#d4f1f9;
-  --bg:          #d4f1f9;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #0984e3;
-  --accent2:     #00cec9;
-  --accent3:     #6c5ce7;
-  --danger:      #d63031;
-  --text:        #2d3436;
-  --text-muted:  #4a5568;
-  --text-dim:    #8896a8;
-}
-
-/* ── 4. Forest (soft sage-green) ── */
-[data-theme="monet"][data-monet-hue="forest"] {
-  --monet-grad:  linear-gradient(135deg, #d4edda 0%, #e8f5e9 50%, #f0fdf4 100%);
-  --monet-ripple:#d4edda;
-  --bg:          #d4edda;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #00b894;
-  --accent2:     #55efc4;
-  --accent3:     #fdcb6e;
-  --danger:      #d63031;
-  --text:        #2d3436;
-  --text-muted:  #4a5568;
-  --text-dim:    #8896a8;
-}
-
-/* ── 5. Terracotta (warm rust-clay, sunset) ── */
-[data-theme="monet"][data-monet-hue="terracotta"] {
-  --monet-grad:  linear-gradient(135deg, #ffe8d6 0%, #fff3e0 50%, #ffecd2 100%);
-  --monet-ripple:#ffe8d6;
-  --bg:          #ffe8d6;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #e17055;
-  --accent2:     #fdcb6e;
-  --accent3:     #a29bfe;
-  --danger:      #d63031;
-  --text:        #2d3436;
-  --text-muted:  #4a5568;
-  --text-dim:    #8896a8;
-}
-
-/* ── 6. Sand (warm beige-stone, minimal) ── */
-[data-theme="monet"][data-monet-hue="sand"] {
-  --monet-grad:  linear-gradient(135deg, #f5f0e8 0%, #fdf6ec 50%, #fffbf5 100%);
-  --monet-ripple:#f5f0e8;
-  --bg:          #f5f0e8;
-  --bg2:         rgba(255,255,255,0.30);
-  --accent:      #a0522d;
-  --accent2:     #c89050;
-  --accent3:     #6a9878;
-  --danger:      #c0392b;
-  --text:        #2a2018;
-  --text-muted:  #806850;
-  --text-dim:    #c8b898;
-}
-
-/* ── Monet gradient applied to body via ::before ── */
-[data-theme="monet"] body::before {
-  content: '';
-  position: fixed; inset: 0; z-index: -3;
-  background: var(--monet-grad, linear-gradient(135deg,#dfe7ff,#f3e8ff,#e8f6ff));
-  pointer-events: none;
-}
-/* Monet: html/body base = first stop so no flash */
-[data-theme="monet"] html,
-[data-theme="monet"] body {
-  background: var(--bg) !important;
-}
-/* Pure mode + Monet: body background transparent so gradient shows cleanly */
-.pure-mode[data-theme="monet"] body,
-[data-theme="monet"] .pure-mode body {
-  background: transparent !important;
-}
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); overflow: hidden; user-select: none; -webkit-user-select: none; }
 
@@ -285,8 +138,6 @@ html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text
               radial-gradient(ellipse 40% 50% at 85% 85%, rgba(106,245,200,.04) 0%, transparent 60%);
   transition: opacity .3s;
 }
-[data-theme="monet"] #app::before { opacity: 0; }
-
 /* ═══════════════════════════════════════════
    FIXED SEARCH BAR — floats above everything
    Container is pointer-events:none so widgets
@@ -1850,68 +1701,6 @@ body.has-custom-bg {
 .tc-light .tc-bar:nth-child(2) { background: #e0d8cc; }
 .tc-light .tc-bar:nth-child(3) { background: #efe9e0; }
 
-/* Monet preview uses inline style set by JS per active hue */
-.tc-monet .tc-preview { background: linear-gradient(135deg,#dfe7ff,#f3e8ff,#e8f6ff); }
-.tc-monet .tc-bar:nth-child(1) { background: #6c5ce7; }
-.tc-monet .tc-bar:nth-child(2) { background: rgba(255,255,255,0.55); }
-.tc-monet .tc-bar:nth-child(3) { background: rgba(255,255,255,0.30); }
-
-/* ── Monet hue swatches row (shown below monet card when active) ── */
-.monet-hues-full {
-  display: grid; grid-template-columns: repeat(6, 1fr);
-  gap: 6px; margin-bottom: 4px;
-}
-/* dim hue swatches when not in monet mode — still clickable to switch */
-:not([data-theme="monet"]) .monet-hues-full .monet-hue-btn {
-  opacity: .45;
-  filter: saturate(.4);
-}
-:not([data-theme="monet"]) .monet-hues-full .monet-hue-btn:hover {
-  opacity: .8;
-  filter: saturate(.8);
-}
-.monet-hue-btn {
-  border-radius: 10px; border: 2.5px solid transparent;
-  cursor: pointer; padding: 0; overflow: hidden;
-  transition: border-color .18s, transform .15s, box-shadow .18s, opacity .18s, filter .18s;
-  position: relative; aspect-ratio: 1;
-  background: transparent;
-}
-.monet-hue-btn:hover { transform: scale(1.06); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
-.monet-hue-btn.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(255,255,255,.15);
-  opacity: 1 !important; filter: none !important;
-}
-.monet-hue-btn.active::after {
-  content: '✓'; position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: .8rem; font-weight: 800; color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,.6);
-  pointer-events: none;
-}
-.mhb-preview {
-  width: 100%; aspect-ratio: 1;
-  display: flex; flex-direction: column;
-  align-items: flex-start; justify-content: center;
-  gap: 3px; padding: 5px 6px; box-sizing: border-box;
-}
-.mhb-bar {
-  height: 5px; border-radius: 3px; opacity: .9; flex-shrink: 0;
-}
-.mhb-label {
-  display: block; font-size: .55rem; font-weight: 700;
-  text-align: center; padding: 3px 2px 4px;
-  color: var(--text-muted); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-  line-height: 1; letter-spacing: .02em;
-}
-.monet-hue-btn.active .mhb-label { color: var(--accent); }
-@keyframes swatchIn {
-  from { opacity:0; transform:translateY(-6px); }
-  to   { opacity:1; transform:translateY(0); }
-}
-
 /* ── Settings: background section ── */
 /* ══════════════════════════════════════════
    BACKGROUND CARD — unified upload + preview
@@ -2125,12 +1914,6 @@ body.has-custom-bg {
 .bg-slider-row:last-child { margin-bottom: 0; }
 .bg-upload-icon { font-size: .95rem; }
 
-/* Monet: suppress the gradient fallback only when no custom bg image is active.
-   When the user uploads an image, body gets .has-custom-bg and the override is lifted. */
-[data-theme="monet"] body:not(.has-custom-bg) #bg-layer {
-  background-image: none !important;
-  background-color: transparent !important;
-}
 
 /* ═══════════════════════════════════════════
    VIEW TRANSITIONS — circular ripple theme switch

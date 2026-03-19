@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="monet" data-monet-hue="lavender">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,11 +17,8 @@
   (function() {
     try {
       var s = JSON.parse(localStorage.getItem('dash_v3'));
-      var th  = (s && s.settings && s.settings.theme)    || 'monet';
-      var hue = (s && s.settings && s.settings.monetHue) || 'lavender';
+      var th = (s && s.settings && s.settings.theme) || 'dark';
       document.documentElement.setAttribute('data-theme', th);
-      if (th === 'monet') document.documentElement.setAttribute('data-monet-hue', hue);
-      else document.documentElement.removeAttribute('data-monet-hue');
     } catch(e) {}
   })();
 </script>

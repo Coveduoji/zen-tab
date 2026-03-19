@@ -1,23 +1,10 @@
 'use strict';
-// ── Monet hue definitions ─────────────────────────────────
-const MONET_HUES = [
-  { id:'lavender',   label:'薰衣草', labelEn:'Lavender',   ripple:'#dfe7ff', grad:'linear-gradient(135deg,#dfe7ff,#f3e8ff,#e8f6ff)', bg:'#dfe7ff', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#6c5ce7' },
-  { id:'rose',       label:'玫瑰',   labelEn:'Rose',       ripple:'#ffd6e0', grad:'linear-gradient(135deg,#ffd6e0,#ffecf0,#ffe8f5)', bg:'#ffd6e0', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#e84393' },
-  { id:'ocean',      label:'海洋',   labelEn:'Ocean',      ripple:'#d4f1f9', grad:'linear-gradient(135deg,#d4f1f9,#e8f4fd,#d6eaff)', bg:'#d4f1f9', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#0984e3' },
-  { id:'forest',     label:'丛林',   labelEn:'Forest',     ripple:'#d4edda', grad:'linear-gradient(135deg,#d4edda,#e8f5e9,#f0fdf4)', bg:'#d4edda', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#00b894' },
-  { id:'terracotta', label:'陶土',   labelEn:'Clay',       ripple:'#ffe8d6', grad:'linear-gradient(135deg,#ffe8d6,#fff3e0,#ffecd2)', bg:'#ffe8d6', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#e17055' },
-  { id:'sand',       label:'沙丘',   labelEn:'Sand',       ripple:'#f5f0e8', grad:'linear-gradient(135deg,#f5f0e8,#fdf6ec,#fffbf5)', bg:'#f5f0e8', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#a0522d' },
-];
-
 // ── View Transitions ripple ──────────────────────────────
 let _rippleBusy = false;
 let _currentTransition = null;
 
-function _commitTheme(th, hue) {
-  const root = document.documentElement;
-  root.setAttribute('data-theme', th);
-  if (th === 'monet' && hue) root.setAttribute('data-monet-hue', hue);
-  else root.removeAttribute('data-monet-hue');
+function _commitTheme(th) {
+  document.documentElement.setAttribute('data-theme', th);
 }
 
 function _runRippleTransition(fromEl, commitFn, onDone) {
@@ -64,24 +51,14 @@ function _runRippleTransition(fromEl, commitFn, onDone) {
 }
 
 function applyTheme(th, fromEl) {
-  const hue = state.settings.monetHue || 'lavender';
   _runRippleTransition(fromEl, () => {
-    _commitTheme(th, hue);
+    _commitTheme(th);
     state.settings.theme = th;
     saveState();
     applyBackground();
   }, () => {
     if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
   });
-}
-
-function applyMonetHue(hueId, fromEl) {
-  state.settings.monetHue = hueId;
-  if (state.settings.theme !== 'monet') state.settings.theme = 'monet';
-  saveState();
-  _runRippleTransition(fromEl, () => {
-    _commitTheme('monet', hueId);
-  }, renderSettings);
 }
 
 
@@ -111,8 +88,7 @@ function applyBackground() {
   const ov = parseFloat(bg.overlay)||0;
   if (ov > 0 && !pureMode) {
     const th = document.documentElement.getAttribute('data-theme')||'dark';
-    const isLight = th==='light'||th==='monet';
-    ovEl.style.background = isLight ? `rgba(255,255,255,${ov*0.5})` : `rgba(0,0,0,${ov})`;
+    ovEl.style.background = th === 'light' ? `rgba(255,255,255,${ov*0.5})` : `rgba(0,0,0,${ov})`;
   } else { ovEl.style.background = ''; }
   document.body.classList.toggle('has-custom-bg', !!(hasImg || hasColor));
 }
@@ -197,7 +173,7 @@ function buildPaletteFromColor({r,g,b,h,s,l}){
 function applyBgPalette(palette) {
   const TAG_ID='bg-palette-vars'; const existing=document.getElementById(TAG_ID); if(existing)existing.remove(); if(!palette)return;
   const p=palette;
-  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--monet-grad:${p.grad};--bg:${p.bg};--monet-ripple:${p.ripple};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
+  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--bg:${p.bg};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
   const style=document.createElement('style');style.id=TAG_ID;style.textContent=css;document.head.appendChild(style);
 }
 async function triggerBgPaletteExtraction(fromBtn) {
