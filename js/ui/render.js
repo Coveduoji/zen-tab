@@ -19,7 +19,6 @@ function _makeWidgetContent(wdata) {
 
   const isLink = wdata.type === 'link';
   const titleText = isLink ? (wdata.config.name || def.name) : def.name;
-  const wR = 28, wC = (2 * Math.PI * wR).toFixed(1);
 
   const el = document.createElement('div');
   el.className = 'widget';
@@ -34,14 +33,7 @@ function _makeWidgetContent(wdata) {
           <div class="w-title"><span class="ico">${def.icon}</span><span>${titleText}</span></div>
           <div class="w-controls" style="display:flex;gap:3px;opacity:0;transition:opacity var(--t)"></div>
         </div>`}
-    <div class="w-body"></div>
-    <div class="w-lp-ring">
-      <svg width="64" height="64" viewBox="0 0 64 64">
-        <circle class="wlp-track" cx="32" cy="32" r="${wR}" stroke-width="3"/>
-        <circle class="wlp-fill"  cx="32" cy="32" r="${wR}" stroke-width="3"
-          stroke-dasharray="${wC}" stroke-dashoffset="${wC}"/>
-      </svg>
-    </div>`;
+    <div class="w-body"></div>`;
 
   el.addEventListener('mouseenter', () => { if (!editMode) el.querySelector('.w-controls')?.style.setProperty('opacity','1'); });
   el.addEventListener('mouseleave', () => { el.querySelector('.w-controls')?.style.setProperty('opacity','0'); });
@@ -58,7 +50,7 @@ function _makeWidgetContent(wdata) {
     if (editMode && el._pressTime && Date.now() - el._pressTime < 250) toggleSelect(wdata.id);
     el._pressTime = 0;
   });
-  _initWLP(el, wdata);
+  _initWLP(el);
 
   // mount() calls def.render AFTER el is in document so getElementById works
   function mount() {
@@ -75,29 +67,33 @@ function _makeWidgetContent(wdata) {
 }
 
 // ── Long-press to enter edit mode ─────────────────────────
-const _WLP_DUR = 650, _WC_VAL = 2 * Math.PI * 28;
+const _WLP_DUR = 650;
 let _wlp = null;
 
 function _wlpStop() {
   if (!_wlp) return;
   if (_wlp.timer) cancelAnimationFrame(_wlp.timer);
-  if (_wlp.ringEl) { _wlp.ringEl.style.display = 'none'; _wlp.fillEl.style.opacity = '0'; }
+  document.getElementById('lp-ring').style.display = 'none';
   _wlp = null;
 }
 
-function _initWLP(el, wdata) {
-  const ringEl = el.querySelector('.w-lp-ring');
-  const fillEl = el.querySelector('.wlp-fill');
+function _initWLP(el) {
   el.addEventListener('mousedown', e => {
     if (editMode || e.button !== 0) return;
     if (e.target.closest('.w-del-badge')) return;
-    _wlp = { el, ringEl, fillEl, timer: null, startX: e.clientX, startY: e.clientY, startTs: null };
-    ringEl.style.display = 'block'; fillEl.style.opacity = '1'; fillEl.style.strokeDashoffset = _WC_VAL;
+    const ring = document.getElementById('lp-ring');
+    const fill = document.getElementById('lp-ring-fill');
+    const C = 69.1;
+    ring.style.left = e.clientX + 'px';
+    ring.style.top  = e.clientY + 'px';
+    ring.style.display = 'block';
+    fill.style.strokeDashoffset = C;
+    _wlp = { el, timer: null, startX: e.clientX, startY: e.clientY, startTs: null };
     function frame(ts) {
       if (!_wlp || _wlp.el !== el) return;
       if (!_wlp.startTs) _wlp.startTs = ts;
       const pct = Math.min(1, (ts - _wlp.startTs) / _WLP_DUR);
-      fillEl.style.strokeDashoffset = _WC_VAL * (1 - pct);
+      fill.style.strokeDashoffset = C * (1 - pct);
       if (pct < 1) _wlp.timer = requestAnimationFrame(frame);
       else { _wlpStop(); enterEditMode(); }
     }
@@ -182,6 +178,19 @@ function _setGridEditable(enabled) {
     _grid.enableMove(false);
     _grid.enableResize(false);
   }
+}
+
+// Update widget positions in-place (avoids full re-render after tidy)
+function refreshGridLayout(widgets) {
+  if (!_grid) { renderAll(); return; }
+  const wMap = new Map(widgets.map(w => [w.id, w]));
+  _grid.batchUpdate(true);
+  _grid.getGridItems().forEach(gsItem => {
+    const id = gsItem.getAttribute('gs-id');
+    const w = wMap.get(id);
+    if (w) _grid.update(gsItem, { x: w.x, y: w.y, w: w.w, h: w.h });
+  });
+  _grid.batchUpdate(false);
 }
 
 function addWidget(wdata) {

@@ -90,7 +90,7 @@ function initEditMode() {
     tidyLayout(state.widgets);
     compact(state.widgets);
     saveState();
-    renderAll();
+    refreshGridLayout(state.widgets);
     toast(t('layout_tidied'), 'ok');
   });
 

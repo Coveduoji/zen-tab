@@ -2069,16 +2069,49 @@ body.has-custom-bg {
 #confirm-box .cb-s { font-size:.78rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5; }
 #confirm-box .cb-row { display:flex;gap:8px;justify-content:flex-end; }
 
-/* ═══════════════════════════════════════════
-   WIDGET — long-press ring overlay
-   ═══════════════════════════════════════════ */
-.w-lp-ring {
-  position: absolute; inset: -1px; border-radius: var(--r); pointer-events: none; z-index: 600;
-  display: none;
+/* .w-lp-ring removed — widget long-press now uses the shared #lp-ring element */
+
+/* Link widget — edit mode: jiggle + label + selection */
+@keyframes lw-jiggle {
+  0%,100% { transform: rotate(0deg); }
+  20%     { transform: rotate(-3deg) scale(1.03); }
+  60%     { transform: rotate(2.5deg) scale(1.03); }
+  80%     { transform: rotate(-1deg); }
 }
-.w-lp-ring svg { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-90deg); }
-.wlp-track { fill: none; stroke: rgba(124,106,245,.2); }
-.wlp-fill { fill: none; stroke: var(--accent); stroke-linecap: round; }
+body.edit-mode .widget[data-type="link"] .link-widget-body {
+  animation: lw-jiggle .5s ease-in-out infinite;
+}
+body.edit-mode .widget[data-type="link"] .lw-fav {
+  border-color: rgba(124,106,245,.45);
+  box-shadow: 0 0 0 2px rgba(124,106,245,.18), 0 4px 16px rgba(0,0,0,.18);
+}
+body.edit-mode .widget[data-type="link"] .lw-name {
+  display: block !important;
+  position: absolute;
+  bottom: -18px;
+  left: 50%; transform: translateX(-50%);
+  font-size: .6rem; font-weight: 700;
+  color: #fff;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 2px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  max-width: 130%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  letter-spacing: .02em;
+}
+/* Selected: stop jiggle, accent glow */
+body.edit-mode .widget[data-type="link"].selected .link-widget-body { animation: none; }
+body.edit-mode .widget[data-type="link"].selected .lw-fav {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124,106,245,.45), 0 4px 16px rgba(0,0,0,.18);
+}
+/* Suppress hover lift during edit mode */
+body.edit-mode .widget[data-type="link"] .link-widget-body:hover .lw-fav { transform: none; }
 
 /* ═══════════════════════════════════════════
    WIDGET TYPE: LINK — desktop icon style
