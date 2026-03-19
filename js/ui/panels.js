@@ -134,9 +134,8 @@ function initPanels() {
   });
   document.getElementById('ctx-del').addEventListener('click', () => {
     const id = _ctxWidgetId; closeCtxMenu();
-    confirm2(t('del_confirm_t'), t('del_confirm_s'), t('del_btn'), ok => {
-      if (ok) { removeWidget(id, true); toast(t('widget_removed'), ''); }
-    });
+    removeWidget(id);
+    toast(t('widget_removed'), '');
   });
 
   // Keyboard shortcuts

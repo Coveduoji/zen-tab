@@ -47,7 +47,6 @@ function makeWidget(wdata, layoutOverrides) {
 
   const wR = 28; const wC = 2*Math.PI*wR;
   el.innerHTML = `
-    <div class="w-del-badge" title="Delete">−</div>
     ${isLink
       ? `<div class="w-controls" style="position:absolute;top:4px;right:4px;z-index:10;display:flex;gap:2px;opacity:0;transition:opacity var(--t)"></div>`
       : `<div class="w-header">
@@ -75,13 +74,6 @@ function makeWidget(wdata, layoutOverrides) {
 
   // Right-click context menu
   el.addEventListener('contextmenu', e => openCtxMenu(e, wdata.id));
-
-  // Delete badge
-  el.querySelector('.w-del-badge').addEventListener('click', e => {
-    e.stopPropagation();
-    removeWidget(wdata.id);
-    toast(t('widget_removed'), '');
-  });
 
   // Render body
   const body = el.querySelector('.w-body');
@@ -112,7 +104,7 @@ function makeWidget(wdata, layoutOverrides) {
 
     function startWLP(e) {
       if (editMode) return;
-      if (e.target.closest('.w-del-badge') || e.target.closest('.rh')) return;
+      if (e.target.closest('.rh')) return;
       if (e.button !== 0 && e.type === 'mousedown') return;
       wlpX = e.clientX; wlpY = e.clientY;
       wlpStart = null;
@@ -144,7 +136,7 @@ function makeWidget(wdata, layoutOverrides) {
   let dragging=false, dragStarted=false, offX=0, offY=0, ghost=null, origX=0, origY=0, downX=0, downY=0;
 
   el.addEventListener('mousedown', e => {
-    if (e.target.closest('.rh') || e.target.closest('.w-del-badge')) return;
+    if (e.target.closest('.rh')) return;
     if (e.button !== 0) return;
     e.preventDefault();   // always preventDefault — blocks <a> native nav for all widget types
     e.stopPropagation();
@@ -230,9 +222,14 @@ function makeWidget(wdata, layoutOverrides) {
     if (!dragging) {
       dragStarted = false;
       // Not a drag — this is a clean click.
-      // For link widgets: fire the navigation now (since mousedown did preventDefault)
-      if (isLink && !el._wasDragged && !editMode) {
-        window.open(wdata.config.url, '_blank', 'noopener,noreferrer');
+      if (!el._wasDragged) {
+        // In edit mode: toggle multi-select
+        if (editMode) {
+          toggleWidgetSelection(wdata.id);
+        } else if (isLink) {
+          // Normal mode: fire link navigation (mousedown did preventDefault)
+          window.open(wdata.config.url, '_blank', 'noopener,noreferrer');
+        }
       }
       el._wasDragged = false;
       return;
@@ -351,18 +348,15 @@ function addWidget(wdata) {
   updateEmptyHint();
 }
 
-function removeWidget(id, skipConfirm=false) {
-  function doRemove() {
-    const el = document.querySelector(`.widget[data-id="${id}"]`);
-    if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
-    // Clean up any stored custom image for this link widget
-    localStorage.removeItem('dash_limg_' + id);
-    state.widgets = state.widgets.filter(w=>w.id!==id);
-    saveState();
-    updateEmptyHint();
-  }
-  if (skipConfirm) { doRemove(); return; }
-  doRemove(); // Delete badge already confirmed by user clicking −
+function removeWidget(id) {
+  const el = document.querySelector(`.widget[data-id="${id}"]`);
+  if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
+  localStorage.removeItem('dash_limg_' + id);
+  state.widgets = state.widgets.filter(w=>w.id!==id);
+  // Keep selection state in sync
+  if (typeof selectedIds !== 'undefined') { selectedIds.delete(id); updateSelectionUI(); }
+  saveState();
+  updateEmptyHint();
 }
 
 function renderAll() {

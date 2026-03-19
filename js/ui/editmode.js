@@ -1,6 +1,43 @@
 'use strict';
 var editMode = false;
 
+// ── Multi-select ──────────────────────────────────────────
+const selectedIds = new Set();
+
+function toggleWidgetSelection(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  document.querySelectorAll('.widget').forEach(el => {
+    el.classList.toggle('selected', selectedIds.has(el.dataset.id));
+  });
+  const btn = document.getElementById('btn-del-sel');
+  if (btn) {
+    const n = selectedIds.size;
+    btn.style.display = n > 0 ? '' : 'none';
+    btn.textContent = `删除 (${n})`;
+  }
+}
+
+function removeSelectedWidgets() {
+  if (!selectedIds.size) return;
+  const ids = [...selectedIds];
+  selectedIds.clear();
+  ids.forEach(id => {
+    const el = document.querySelector(`.widget[data-id="${id}"]`);
+    if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
+    localStorage.removeItem('dash_limg_' + id);
+  });
+  state.widgets = state.widgets.filter(w => !ids.includes(w.id));
+  saveState();
+  updateEmptyHint();
+  updateSelectionUI();
+  toast(t('widget_removed'), '');
+}
+
 function enterEditMode() {
   if (editMode) return;
   editMode = true;
@@ -16,6 +53,8 @@ function enterEditMode() {
 function exitEditMode() {
   if (!editMode) return;
   editMode = false;
+  selectedIds.clear();
+  updateSelectionUI();
   document.body.classList.remove('edit-mode');
   document.getElementById('header').classList.remove('edit-mode-active');
   document.getElementById('edit-bar').classList.remove('visible');
@@ -73,6 +112,7 @@ function cancelLongPress() {
 
 function initEditMode() {
   document.getElementById('btn-done').addEventListener('click', exitEditMode);
+  document.getElementById('btn-del-sel').addEventListener('click', removeSelectedWidgets);
   document.getElementById('btn-tidy').addEventListener('click', () => {
     tidyLayout(state.widgets); compact(state.widgets);
     saveState(); renderAll();

@@ -443,7 +443,13 @@ body.edit-mode #fab-hover-zone {
   background: var(--accent); animation: pulse 1.4s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.35)} }
-#edit-bar-actions { display: flex; gap: 10px; }
+#edit-bar-actions { display: flex; gap: 10px; align-items: center; }
+#btn-del-sel {
+  padding: 6px 18px; border-radius: 22px; font-size: .8rem; font-weight: 700;
+  cursor: pointer; transition: all var(--t); border: 1.5px solid var(--danger);
+  background: rgba(245,106,106,.12); color: var(--danger);
+}
+#btn-del-sel:hover { background: var(--danger); color: var(--text-on-accent); }
 .edit-action-btn {
   padding: 7px 20px; border-radius: 22px; font-size: .8rem; font-weight: 700;
   cursor: pointer; transition: all var(--t); border: 1.5px solid var(--card-border);
@@ -538,7 +544,6 @@ body.edit-mode #fab-hover-zone {
 .widget button,
 .widget a,
 .widget .w-btn,
-.widget .w-del-badge,
 .widget .rh,
 .widget .eng-badge,
 .widget .pom-btn,
@@ -561,6 +566,11 @@ body.edit-mode .widget.dragging {
   animation: none !important;
   transform: translateX(0) translateY(0) scale(1.04) !important;
 }
+body.edit-mode .widget.selected {
+  animation: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2.5px var(--accent), 0 4px 24px rgba(124,106,245,.45) !important;
+}
 @keyframes jiggle {
   0%  { transform: rotate(-.4deg) translateY(0px); }
   100%{ transform: rotate(.4deg)  translateY(-1px); }
@@ -577,18 +587,6 @@ body.edit-mode .widget.dragging {
   display: flex; align-items: center; gap: 5px;
 }
 .w-title .ico { font-size: .82rem; opacity: 1; }
-
-/* Delete badge (edit mode only) */
-.w-del-badge {
-  position: absolute; top: -8px; left: -8px; z-index: 200;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--danger); color: var(--text-on-accent); font-size: .75rem; font-weight: 700;
-  display: none; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: 0 2px 8px rgba(245,106,106,.5);
-  transition: transform .1s;
-}
-.w-del-badge:hover { transform: scale(1.15); }
-body.edit-mode .w-del-badge { display: flex; }
 
 /* Resize handles (edit mode) */
 .w-resize-handles { display: none; }
