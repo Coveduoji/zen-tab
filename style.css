@@ -2080,29 +2080,34 @@ body.has-custom-bg {
 }
 body.edit-mode .widget[data-type="link"] .link-widget-body {
   animation: lw-jiggle .5s ease-in-out infinite;
+  overflow: hidden;    /* clip label strip to icon's rounded bounds */
+  border-radius: 20px; /* match .lw-fav */
 }
 body.edit-mode .widget[data-type="link"] .lw-fav {
   border-color: rgba(124,106,245,.45);
   box-shadow: 0 0 0 2px rgba(124,106,245,.18), 0 4px 16px rgba(0,0,0,.18);
 }
+/* Label: frosted-glass strip at bottom of icon — stays inside rounded bounds */
 body.edit-mode .widget[data-type="link"] .lw-name {
   display: block !important;
   position: absolute;
-  bottom: -18px;
-  left: 50%; transform: translateX(-50%);
-  font-size: .6rem; font-weight: 700;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,.52);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   color: #fff;
-  background: rgba(0,0,0,.6);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  padding: 2px 8px;
-  border-radius: 5px;
+  font-size: .55rem; font-weight: 700;
+  text-align: center;
+  padding: 3px 4px;
   white-space: nowrap;
-  max-width: 130%;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
   letter-spacing: .02em;
+}
+/* Hide resize handle for link widgets — they use fixed icon sizing */
+body.edit-mode .grid-stack-item:has(.widget[data-type="link"]) .ui-resizable-handle {
+  display: none !important;
 }
 /* Selected: stop jiggle, accent glow */
 body.edit-mode .widget[data-type="link"].selected .link-widget-body { animation: none; }
