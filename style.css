@@ -460,14 +460,13 @@ body.edit-mode #fab-hover-zone {
    GRID SYSTEM
    ═══════════════════════════════════════════ */
 #grid-outer {
-  flex: 1; overflow-y: auto; overflow-x: auto;
+  flex: 1; overflow-y: auto; overflow-x: hidden;
   padding: calc(22vh + 72px) 24px 32px;
   position: relative; z-index: 1;
   scrollbar-width: thin; scrollbar-color: var(--card-border) transparent;
 }
 #grid-canvas {
   position: relative;
-  min-width: 720px;
   /* min-height set by JS */
 }
 

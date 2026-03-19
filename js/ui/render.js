@@ -5,6 +5,23 @@
 // Single pair of document-level listeners shared by all widgets (drag + resize).
 // Each mousedown registers its own handlers; mouseup clears them automatically.
 let _docMoveH = null, _docUpH = null;
+
+// Display-only layout overrides used when the window is too narrow to fit the
+// stored layout. Does NOT mutate state — cleared automatically when vc grows
+// back. Committed to state permanently when the user starts dragging/resizing.
+let _flowOverrides = null;
+
+// Commit any active flow overrides to state so drag/resize always start from
+// a clean, collision-free position.
+function _commitFlowOverrides() {
+  if (!_flowOverrides) return;
+  state.widgets.forEach(w => {
+    const ov = _flowOverrides[w.id];
+    if (ov) { w.x = ov.x; w.y = ov.y; w.w = ov.w; }
+  });
+  _flowOverrides = null;
+  debouncedSaveState();
+}
 document.addEventListener('mousemove', e => _docMoveH?.(e));
 document.addEventListener('mouseup',   e => { _docUpH?.(e); _docMoveH = null; _docUpH = null; });
 
@@ -132,6 +149,9 @@ function makeWidget(wdata, layoutOverrides) {
     e.preventDefault();   // always preventDefault — blocks <a> native nav for all widget types
     e.stopPropagation();
 
+    // Commit any display-only responsive overrides so drag starts from real positions
+    _commitFlowOverrides();
+
     dragging = false; dragStarted = false;
     el._wasDragged = false;   // reset on every fresh press
     origX = wdata.x; origY = wdata.y;
@@ -160,7 +180,7 @@ function makeWidget(wdata, layoutOverrides) {
       ghost = document.getElementById('drop-ghost');
       ghost.style.display = 'block';
       ghost.className = 'drop-ghost valid';
-      const curPx = wPxResponsive(wdata, null);
+      const curPx = wPxResponsive(wdata, _flowOverrides);
       ghost.style.cssText = `display:block;left:${curPx.left}px;top:${curPx.top}px;width:${curPx.width}px;height:${curPx.height}px;`;
     }
 
@@ -257,6 +277,8 @@ function makeWidget(wdata, layoutOverrides) {
     handle.addEventListener('mousedown', e => {
       if (!editMode) return;
       e.preventDefault(); e.stopPropagation();
+      // Commit display-only overrides so resize starts from real positions
+      _commitFlowOverrides();
       resizing=true; rsX=e.clientX; rsY=e.clientY;
       rsW=wdata.w; rsH=wdata.h;
       rsColX=wdata.x; rsRowY=wdata.y;
@@ -347,8 +369,7 @@ function renderAll() {
   const canvas = document.getElementById('grid-canvas');
   canvas.querySelectorAll('.widget').forEach(el=>{ cleanupWidget(el.dataset.id); el._unbindDrag?.(); el.remove(); });
 
-  // computeResponsiveLayout() always returns null (reserved for future responsive mode)
-  const layoutOverrides = null;
+  const layoutOverrides = _flowOverrides;
 
   // Compute canvas height from the effective (possibly overridden) layout
   let maxRow = 0;
@@ -377,7 +398,7 @@ function updateEmptyHint() {
  */
 function positionAll() {
   const canvas = document.getElementById('grid-canvas');
-  const layoutOverrides = null;
+  const layoutOverrides = _flowOverrides;
 
   // Recalculate canvas height (read phase — before any writes)
   let maxRow = 0;
@@ -406,6 +427,10 @@ function positionAll() {
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { normalizeToVc(); resolveCollisions(); buildGridBg(); renderAll(); }, 120);
+  resizeTimer = setTimeout(() => {
+    _flowOverrides = computeFlowLayout();
+    buildGridBg();
+    renderAll();
+  }, 120);
 });
 window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });

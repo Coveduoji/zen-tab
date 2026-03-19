@@ -21,7 +21,7 @@ function visibleCols() {
   const fit = Math.floor((w + GAP) / (CELL_TARGET + GAP));
   return Math.max(1, Math.min(COLS_MAX, fit));
 }
-function gw()      { return Math.max(document.getElementById('grid-outer').clientWidth - 48, 720); }
+function gw()      { return document.getElementById('grid-outer').clientWidth - 48; }
 function cw()      { const vc = visibleCols(); return (gw() - GAP * (vc - 1)) / vc; }
 function rowH()    { return cw(); }
 function cx(col)   { return col * (cw() + GAP); }
@@ -150,6 +150,36 @@ function tidyLayout(widgets) {
     w.x = bestX; w.y = bestY;
     placed.push({ ...w });
   }
+}
+
+// ── Responsive flow layout (display-only, no state mutation) ─────────────
+// Returns a map of { [widgetId]: {x, y, w, h} } for widgets that need to be
+// repositioned to fit within the current visible column count.
+// Returns null when all widgets already fit at their stored positions.
+function computeFlowLayout() {
+  const vc = visibleCols();
+  // If every widget fits at its current stored position, no reflow needed
+  if (state.widgets.every(w => w.x + w.w <= vc)) return null;
+
+  // Sort by stored reading order (top→left) to preserve relative arrangement
+  const sorted = [...state.widgets].sort((a, b) => a.y - b.y || a.x - b.x);
+  const overrides = {};
+  const placed = [];
+
+  for (const w of sorted) {
+    const ww = Math.min(w.w, vc);
+    let best = { x: 0, y: 0 };
+    outer: for (let y = 0; y < 200; y++) {
+      for (let x = 0; x <= vc - ww; x++) {
+        const rect = { id: w.id, x, y, w: ww, h: w.h };
+        if (!placed.some(p => collides(rect, p))) { best = { x, y }; break outer; }
+      }
+    }
+    const ov = { x: best.x, y: best.y, w: ww, h: w.h };
+    overrides[w.id] = ov;
+    placed.push({ ...ov, id: w.id });
+  }
+  return overrides;
 }
 
 // ── Widget timer registry ─────────────────────────────────
