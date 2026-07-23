@@ -755,9 +755,6 @@ body.edit-mode .w-resize-handles { display: block; }
 }
 .rh:hover::before { transform: scale(1.25); }
 .rh.se { bottom: -1px; right: -1px; cursor: se-resize; }
-.rh.sw { bottom: -1px; left: -1px; cursor: sw-resize; }
-.rh.ne { top: -1px; right: -1px; cursor: ne-resize; }
-.rh.nw { top: -1px; left: -1px; cursor: nw-resize; }
 
 /* Widget body */
 .w-body {

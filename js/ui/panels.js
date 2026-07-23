@@ -40,11 +40,18 @@ function openCtxMenu(e, widgetId) {
   document.getElementById('ctx-edit-label').textContent = editLabelMap[wtype] || t('ctx_edit_generic');
   document.getElementById('ctx-edit').style.display = ['link','notes'].includes(wtype) ? 'flex' : 'none';
   let x = e.clientX, y = e.clientY;
+  // opacity:0 here is only to hide the menu while offsetWidth/offsetHeight
+  // are measured for edge-flip positioning below — it must be cleared
+  // afterward. An inline style always wins over the .open class's
+  // opacity:1 rule regardless of CSS specificity/order, so leaving it set
+  // permanently pinned the menu invisible even though .open still made it
+  // clickable (pointer-events:auto) — right-click looked like it silently
+  // did nothing.
   menu.style.opacity='0'; menu.style.display='block'; menu.classList.remove('open');
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   if (x+mw > window.innerWidth-12)  x = window.innerWidth-mw-12;
   if (y+mh > window.innerHeight-12) y = window.innerHeight-mh-12;
-  menu.style.left=x+'px'; menu.style.top=y+'px'; menu.style.display='';
+  menu.style.left=x+'px'; menu.style.top=y+'px'; menu.style.display=''; menu.style.opacity='';
   requestAnimationFrame(() => menu.classList.add('open'));
 }
 function closeCtxMenu() {

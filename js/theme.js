@@ -202,8 +202,14 @@ function buildPaletteFromColor({r,g,b,h,s,l}){
   const textPrimary=isDark?'#f2f2f8':'#12122a',textSecondary=isDark?'#c0c0d4':'#3a3a5c',textDim=isDark?'#8080a0':'#7070a0';
   const _ar=parseInt(accent.slice(1,3),16),_ag=parseInt(accent.slice(3,5),16),_ab=parseInt(accent.slice(5,7),16);
   const textOnAccent=_lum(_ar,_ag,_ab)>0.35?'#12122a':'#ffffff';
-  const sa=isDark?'0.18':'0.22';
-  const surface=`rgba(255,255,255,${sa})`,surfaceGlass=isDark?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.45)';
+  // Widget card backdrop: tinted from bg1 (dark for isDark, light otherwise)
+  // instead of always-white, and opaque enough that a busy/bright photo
+  // patch showing through can't wash out textSecondary/textDim — those are
+  // chosen assuming a dark-ish backdrop when isDark, so a barely-there white
+  // haze over a bright photo region made light-on-light text unreadable.
+  const _bg1r=parseInt(bg1.slice(1,3),16),_bg1g=parseInt(bg1.slice(3,5),16),_bg1b=parseInt(bg1.slice(5,7),16);
+  const sa=isDark?'0.55':'0.6';
+  const surface=`rgba(${_bg1r},${_bg1g},${_bg1b},${sa})`,surfaceGlass=`rgba(${_bg1r},${_bg1g},${_bg1b},${isDark?'0.62':'0.68'})`;
   const border=isDark?'rgba(255,255,255,0.18)':'rgba(255,255,255,0.55)',borderHover=isDark?'rgba(255,255,255,0.40)':'rgba(255,255,255,0.85)';
   const modalOverlay=isDark?'rgba(0,0,0,0.55)':`rgba(${r},${g},${b},0.35)`;
   return {h:Math.round(h),s:Math.round(s*100),l:Math.round(l*100),isDark,accent,accent2,accent3,textPrimary,textSecondary,textDim,textOnAccent,surface,surfaceGlass,border,borderHover,grad,bg:bg1,modalOverlay,ripple:_hslToHex(h,bgS*1.2,bgL)};

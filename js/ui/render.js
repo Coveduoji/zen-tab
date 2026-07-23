@@ -39,9 +39,6 @@ function makeWidget(wdata, layoutOverrides) {
     </div>`}
     <div class="w-body"></div>
     <div class="w-resize-handles">
-      <div class="rh nw" data-dir="nw"></div>
-      <div class="rh ne" data-dir="ne"></div>
-      <div class="rh sw" data-dir="sw"></div>
       <div class="rh se" data-dir="se"></div>
     </div>
     <div class="w-lp-ring" id="wlpr-${wdata.id}">
@@ -274,20 +271,18 @@ function makeWidget(wdata, layoutOverrides) {
     el.querySelectorAll('.rh').forEach(h => h._unbind?.());
   };
 
-  /* ────────── RESIZE ────────── */
+  /* ────────── RESIZE — single bottom-right handle, free resize ────────── */
   el.querySelectorAll('.rh').forEach(handle => {
-    let resizing=false, rsX=0, rsY=0, rsW=0, rsH=0, rsColX=0, rsRowY=0;
+    let resizing=false, rsX=0, rsY=0, rsW=0, rsH=0;
     // Same idea as drag: cache grid geometry once per resize session and
     // batch style writes into a single rAF per frame.
     let rsGeom=null, rsRAF=null, rsPendingEvent=null;
-    const dir = handle.dataset.dir;
 
     handle.addEventListener('mousedown', e => {
       if (!editMode) return;
       e.preventDefault(); e.stopPropagation();
       resizing=true; rsX=e.clientX; rsY=e.clientY;
       rsW=wdata.w; rsH=wdata.h;
-      rsColX=wdata.x; rsRowY=wdata.y;
       rsGeom = { colW: cw(), vc: visibleCols(), rowH: rowH() };
       el.style.transition='none';
       _docMoveH = onResizeMove; _docUpH = onResizeUp;
@@ -313,38 +308,16 @@ function makeWidget(wdata, layoutOverrides) {
       // top of something else (see tidyLayout's history).
       const rules = SIZE_RULES[wdata.type]||{minW:1,minH:1,maxW:rsGeom.vc,maxH:20};
 
-      if (dir==='se') { wdata.w=Math.max(rules.minW,Math.min(rules.maxW,rsGeom.vc-wdata.x,rsW+dCol)); wdata.h=Math.max(rules.minH,Math.min(rules.maxH,rsH+dRow)); }
-      else if (dir==='sw') {
-        const newW=Math.max(rules.minW,Math.min(rules.maxW,rsW-dCol));
-        const newX=Math.max(0,rsColX+(rsW-newW));
-        wdata.w=newW; wdata.x=newX; wdata.h=Math.max(rules.minH,Math.min(rules.maxH,rsH+dRow));
-      } else if (dir==='ne') {
-        const newH=Math.max(rules.minH,Math.min(rules.maxH,rsH-dRow));
-        wdata.y=Math.max(0,rsRowY+(rsH-newH)); wdata.h=newH;
-        wdata.w=Math.max(rules.minW,Math.min(rules.maxW,rsGeom.vc-wdata.x,rsW+dCol));
-      } else if (dir==='nw') {
-        const newW=Math.max(rules.minW,Math.min(rules.maxW,rsW-dCol));
-        const newH=Math.max(rules.minH,Math.min(rules.maxH,rsH-dRow));
-        wdata.x=Math.max(0,rsColX+(rsW-newW)); wdata.y=Math.max(0,rsRowY+(rsH-newH));
-        wdata.w=newW; wdata.h=newH;
-      }
+      wdata.w = Math.max(rules.minW, Math.min(rules.maxW, rsGeom.vc-wdata.x, rsW+dCol));
+      wdata.h = Math.max(rules.minH, Math.min(rules.maxH, rsH+dRow));
 
       // Aspect-locked types (link/pomodoro square, weather/clock 3:2, ...):
-      // derive the non-driving side from whichever dimension this handle
-      // moves most directly, instead of letting w/h resize independently.
+      // width drives the ratio since this is the only (bottom-right) handle.
       const ratio = ASPECT_LOCK[wdata.type];
       if (ratio) {
-        let newW, newH;
-        if (dir==='ne'||dir==='nw') {
-          newH = Math.max(rules.minH, Math.min(rules.maxH, wdata.h));
-          newW = Math.max(rules.minW, Math.min(rules.maxW, Math.round(newH * ratio)));
-        } else {
-          newW = Math.max(rules.minW, Math.min(rules.maxW, wdata.w));
-          newH = Math.max(rules.minH, Math.min(rules.maxH, Math.round(newW / ratio)));
-        }
-        if (dir==='nw'||dir==='sw') wdata.x = Math.max(0, rsColX+(rsW-newW));
-        if (dir==='nw'||dir==='ne') wdata.y = Math.max(0, rsRowY+(rsH-newH));
-        wdata.w = newW; wdata.h = newH;
+        const newW = Math.max(rules.minW, Math.min(rules.maxW, wdata.w));
+        wdata.w = newW;
+        wdata.h = Math.max(rules.minH, Math.min(rules.maxH, Math.round(newW / ratio)));
       }
 
       const px = wPxResponsive(wdata, null, rsGeom);
