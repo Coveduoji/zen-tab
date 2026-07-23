@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard — New Tab</title>
+<!-- Warm up the favicon service's connection before any link widget's
+     <img> tag actually requests one — shaves the DNS+TCP+TLS handshake off
+     the critical path for the first icon paint on every open. The image
+     bytes themselves are already browser-cached by the service's own
+     Cache-Control (~7 days); this only targets the "cold connection" part
+     of that request, which caching bytes alone doesn't help with. -->
+<link rel="preconnect" href="https://www.google.com" crossorigin>
+<link rel="dns-prefetch" href="https://www.google.com">
 <style>
   /* System font stack — replaces Google Fonts (blocked by extension CSP) */
   :root {

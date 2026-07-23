@@ -1,4 +1,14 @@
 /* ── LINK ── */
+// Hosts whose favicon has already loaded successfully once during this page
+// session, shared across every link widget instance. Google's favicon
+// service sends no Access-Control-Allow-Origin header, so the actual image
+// bytes can't be read into a canvas/data-URL and persisted across page
+// loads (a CORS-tainted canvas throws on toDataURL) — this in-memory set is
+// the caching lever actually available client-side: once a host is known
+// good this session, later re-renders (tidy/resize/re-add) show its icon
+// immediately instead of the placeholder-then-swap sequence below.
+const _faviconReadyHosts = new Set();
+
 reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_d');}, icon:'🔗', cat:'basic',
   render(body, cfg, id, wdata) {
     cfg.name = cfg.name||'Link'; cfg.url = cfg.url||'https://example.com';
@@ -9,16 +19,21 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
       const emoji = cfg.emoji || null;
       const customImg = cfg.customImg || null;
       const fallbackEmoji = linkEmoji(host);
+      const favKnownGood = fav && _faviconReadyHosts.has(host);
 
       let iconHtml;
       if (customImg) {
         iconHtml = `<img src="${customImg}" alt="" class="lw-custom-img">`;
       } else if (emoji) {
         iconHtml = `<span>${emoji}</span>`;
-      } else if (fav) {
+      } else if (favKnownGood) {
         iconHtml = `<img src="${fav}" alt="" class="lw-img" data-fb="${esc(fallbackEmoji)}">`;
       } else {
-        iconHtml = `<span>${fallbackEmoji}</span>`;
+        // Show the fallback emoji immediately instead of a blank box while
+        // the favicon request is in flight — swapped for the real icon
+        // on load below, so a slow/cold fetch never reads as "nothing
+        // loaded" on this render.
+        iconHtml = `<span class="lw-fb-emoji">${esc(fallbackEmoji)}</span>`;
       }
       body.innerHTML = `<div class="link-widget-body" id="la-${id}" role="link" tabindex="0" title="${esc(cfg.name)}">
         <div class="lw-fav" id="lf-${id}">${iconHtml}</div>
@@ -26,14 +41,35 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
         <div class="lw-tooltip">${esc(cfg.name)}</div>
       </div>`;
 
-      // Favicon error fallback
+      // Favicon error fallback (only reachable via the favKnownGood <img> path)
       const img = body.querySelector('.lw-img');
       if (img) {
         img.addEventListener('error', () => {
+          _faviconReadyHosts.delete(host);
           const fb = document.createElement('span');
           fb.textContent = img.dataset.fb || '🔗';
           img.replaceWith(fb);
         });
+      }
+
+      // Background load: swap the placeholder emoji for the real favicon
+      // once it resolves. Skipped entirely once favKnownGood — that path
+      // already rendered the <img> directly above.
+      if (fav && !favKnownGood) {
+        const preload = new Image();
+        preload.onload = () => {
+          _faviconReadyHosts.add(host);
+          const favEl = document.getElementById(`lf-${id}`);
+          const placeholder = favEl?.querySelector('.lw-fb-emoji');
+          if (!placeholder) return; // widget re-rendered/removed before this resolved
+          const realImg = document.createElement('img');
+          realImg.className = 'lw-img'; realImg.alt = '';
+          realImg.dataset.fb = fallbackEmoji;
+          realImg.src = fav;
+          realImg.addEventListener('error', () => { _faviconReadyHosts.delete(host); });
+          placeholder.replaceWith(realImg);
+        };
+        preload.src = fav;
       }
 
       const anchor = document.getElementById(`la-${id}`);
@@ -46,31 +82,8 @@ reg({ type:'link', get name(){return t('w_link');}, get desc(){return t('w_link_
         }
       });
     }
-    // Edit button
-    setTimeout(() => {
-      const w = body.closest('.widget');
-      if (!w) return;
-      const ctrl = w.querySelector('.w-controls');
-      if (ctrl && !ctrl.querySelector('.edit-lnk-btn')) {
-        const eb = document.createElement('button');
-        eb.className='w-btn edit-lnk-btn'; eb.textContent='✎'; eb.title='Edit';
-        eb.style.cssText='width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;transition:all .15s';
-        eb.onmouseenter=()=>{eb.style.color='var(--text)';eb.style.background='var(--bg)';};
-        eb.onmouseleave=()=>{eb.style.color='var(--text-muted)';eb.style.background='transparent';};
-        eb.addEventListener('mousedown', e => e.stopPropagation()); // prevent drag system from firing navigation
-        eb.addEventListener('click', e => {
-          e.stopPropagation();
-          e.preventDefault();
-          showLinkModal(cfg, saved => {
-            cfg.name = saved.name; cfg.url = saved.url;
-            if (saved.emoji) cfg.emoji = saved.emoji; else delete cfg.emoji;
-            if (saved.customImg) cfg.customImg = saved.customImg; else delete cfg.customImg;
-            saveWCfg(id, cfg); draw();
-          }, true, id);
-        });
-        ctrl.insertBefore(eb, ctrl.firstChild);
-      }
-    }, 0);
+    // Editing is right-click-menu-only (see js/ui/panels.js ctx-edit) — no
+    // inline edit button on the widget itself.
     draw();
   }
 });

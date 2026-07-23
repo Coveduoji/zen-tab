@@ -689,7 +689,6 @@ body.edit-mode #fab-hover-zone {
 .widget button,
 .widget a,
 .widget .w-btn,
-.widget .w-del-badge,
 .widget .rh,
 .widget .eng-badge,
 .widget .pom-btn,
@@ -729,23 +728,6 @@ body.edit-mode .widget.dragging {
 }
 .w-title .ico { font-size: .82rem; opacity: 1; }
 
-/* Delete badge (edit mode only) */
-.w-del-badge {
-  /* Inset (not negative-offset floating past the corner) — .widget has
-     overflow:hidden for its rounded corners/content clipping, so a child
-     positioned outside the box (or even right at its sharp corner, inside
-     the rounded curve) gets silently clipped down to a sliver. 5px clears
-     var(--r)'s corner curve at any of the current radius values. */
-  position: absolute; top: 5px; left: 5px; z-index: 200;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--danger); color: var(--text-on-accent); font-size: .75rem; font-weight: 700;
-  display: none; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: 0 2px 8px rgba(245,106,106,.5);
-  transition: transform .1s;
-}
-.w-del-badge:hover { transform: scale(1.15); }
-body.edit-mode .w-del-badge { display: flex; }
-
 /* Resize handles (edit mode) */
 .w-resize-handles { display: none; }
 body.edit-mode .w-resize-handles { display: block; }
@@ -759,8 +741,11 @@ body.edit-mode .w-resize-handles { display: block; }
   transition: transform .1s;
 }
 .rh:hover::before { transform: scale(1.25); }
-/* Same clipping reasoning as .w-del-badge above — inset instead of
-   floating past the corner, so .widget's overflow:hidden doesn't cut it. */
+/* Inset (not negative-offset floating past the corner) — .widget has
+   overflow:hidden for its rounded corners, so a child positioned outside
+   the box (or right at its sharp corner, inside the rounded curve) gets
+   silently clipped down to a sliver. 5px clears the corner curve at any of
+   the current --r radius values. */
 .rh.se { bottom: 5px; right: 5px; cursor: se-resize; }
 
 /* Widget body */

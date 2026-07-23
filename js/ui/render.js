@@ -29,10 +29,12 @@ function makeWidget(wdata, layoutOverrides) {
   const titleText = isLink ? (wdata.config.name || def.name) : def.name;
 
   const wR = 28; const wC = 2*Math.PI*wR;
+  // Delete/edit are right-click-menu-only (openCtxMenu below) — no inline
+  // badge/button on the widget itself. .w-controls stays for non-link types
+  // only, since notes.js still injects its font-size buttons into it.
   el.innerHTML = `
-    <div class="w-del-badge" title="Delete">−</div>
     ${isLink
-      ? `<div class="w-controls" style="position:absolute;top:4px;right:4px;z-index:10;display:flex;gap:2px;opacity:0;transition:opacity var(--t)"></div>`
+      ? ''
       : `<div class="w-header">
       <div class="w-title"><span class="ico">${def.icon}</span><span>${titleText}</span></div>
       <div class="w-controls" style="display:flex;gap:3px;opacity:0;transition:opacity var(--t)"></div>
@@ -49,19 +51,12 @@ function makeWidget(wdata, layoutOverrides) {
       </svg>
     </div>`;
 
-  // Show controls on hover (normal mode) — both link and non-link
+  // Show controls on hover (normal mode)
   el.addEventListener('mouseenter', () => { if (!editMode) el.querySelector('.w-controls')?.style.setProperty('opacity','1'); });
   el.addEventListener('mouseleave', () => { el.querySelector('.w-controls')?.style.setProperty('opacity','0'); });
 
-  // Right-click context menu
+  // Right-click context menu — sole entry point for edit/delete
   el.addEventListener('contextmenu', e => openCtxMenu(e, wdata.id));
-
-  // Delete badge
-  el.querySelector('.w-del-badge').addEventListener('click', e => {
-    e.stopPropagation();
-    removeWidget(wdata.id);
-    toast(t('widget_removed'), '');
-  });
 
   // Render body
   const body = el.querySelector('.w-body');
@@ -92,7 +87,7 @@ function makeWidget(wdata, layoutOverrides) {
 
     function startWLP(e) {
       if (editMode) return;
-      if (e.target.closest('.w-del-badge') || e.target.closest('.rh')) return;
+      if (e.target.closest('.rh')) return;
       if (e.button !== 0 && e.type === 'mousedown') return;
       wlpX = e.clientX; wlpY = e.clientY;
       wlpStart = null;
@@ -131,7 +126,7 @@ function makeWidget(wdata, layoutOverrides) {
   let dragRAF=null, pendingMoveEvent=null;
 
   el.addEventListener('mousedown', e => {
-    if (e.target.closest('.rh') || e.target.closest('.w-del-badge')) return;
+    if (e.target.closest('.rh')) return;
     if (e.button !== 0) return;
     e.preventDefault();   // always preventDefault — blocks <a> native nav for all widget types
     e.stopPropagation();
