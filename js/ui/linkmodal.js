@@ -101,7 +101,7 @@ function showLinkModal(cfg={}, cb, isEdit=false, widgetId=null) {
       newDelBtn.addEventListener('click', () => {
         document.getElementById('link-modal').classList.remove('open');
         linkCb = null; linkCustomEmoji = null; linkCustomImg = null;
-        removeWidget(widgetId, true);
+        removeWidget(widgetId);
         toast(lang==='zh' ? '链接已删除' : 'Link removed', '');
       });
     }

@@ -125,6 +125,13 @@ function makeWidget(wdata, layoutOverrides) {
 
   /* ────────── DRAG — 6px threshold, click/drag strictly separated ────────── */
   let dragging=false, dragStarted=false, offX=0, offY=0, ghost=null, origX=0, origY=0, downX=0, downY=0;
+  // Grid geometry + canvas rect cached once per drag session (mousedown) —
+  // they don't change mid-drag, so avoid a forced-reflow clientWidth read
+  // on every mousemove. Pending pointer events are coalesced into a single
+  // rAF-batched write per frame instead of writing styles synchronously
+  // on each mousemove.
+  let dragVc=0, dragColW=0, dragGw=0, dragRowH=0, dragCanvasRect=null;
+  let dragRAF=null, pendingMoveEvent=null;
 
   el.addEventListener('mousedown', e => {
     if (e.target.closest('.rh') || e.target.closest('.w-del-badge')) return;
@@ -139,11 +146,25 @@ function makeWidget(wdata, layoutOverrides) {
     const rect = el.getBoundingClientRect();
     offX = e.clientX - rect.left;
     offY = e.clientY - rect.top;
+    dragVc = visibleCols();
+    dragColW = cw();
+    dragGw = gw();
+    dragRowH = rowH();
+    dragCanvasRect = document.getElementById('grid-canvas').getBoundingClientRect();
     _docMoveH = onMove; _docUpH = onUp;
   });
 
   function onMove(e) {
     if (downX === 0 && downY === 0) return;
+    pendingMoveEvent = e;
+    if (dragRAF) return;
+    dragRAF = requestAnimationFrame(processMove);
+  }
+
+  function processMove() {
+    dragRAF = null;
+    const e = pendingMoveEvent;
+    if (!e) return;
 
     const dx = e.clientX - downX, dy = e.clientY - downY;
 
@@ -160,20 +181,18 @@ function makeWidget(wdata, layoutOverrides) {
       ghost = document.getElementById('drop-ghost');
       ghost.style.display = 'block';
       ghost.className = 'drop-ghost valid';
-      const curPx = wPxResponsive(wdata, null);
+      const curPx = wPxResponsive(wdata, null, { colW: dragColW, vc: dragVc, rowH: dragRowH });
       ghost.style.cssText = `display:block;left:${curPx.left}px;top:${curPx.top}px;width:${curPx.width}px;height:${curPx.height}px;`;
     }
 
     if (!dragging) return;
-    const canvasRect = document.getElementById('grid-canvas').getBoundingClientRect();
-    let nx = e.clientX - canvasRect.left - offX;
-    let ny = e.clientY - canvasRect.top  - offY;
+    let nx = e.clientX - dragCanvasRect.left - offX;
+    let ny = e.clientY - dragCanvasRect.top  - offY;
 
-    const vc = visibleCols();
-    const colW = cw();
+    const vc = dragVc, colW = dragColW;
     const pw = Math.min(wdata.w, vc) * colW + (Math.min(wdata.w,vc)-1)*GAP;
-    const ph = (wdata.type === 'link' || wdata.type === 'pomodoro') ? pw : wdata.h * rowH() + (wdata.h-1)*GAP;
-    nx = Math.max(0, Math.min(gw() - pw, nx));
+    const ph = (wdata.type === 'link' || wdata.type === 'pomodoro') ? pw : wdata.h * dragRowH + (wdata.h-1)*GAP;
+    nx = Math.max(0, Math.min(dragGw - pw, nx));
     ny = Math.max(0, ny);
 
     el.style.left = nx + 'px';
@@ -183,11 +202,11 @@ function makeWidget(wdata, layoutOverrides) {
     // 用实际渲染宽度（不超过 vc）计算 snap 上限
     const renderW = Math.min(wdata.w, vc);
     const snapCol = Math.max(0, Math.min(vc - renderW, Math.round(nx/(colW+GAP))));
-    const snapRow = Math.max(0, Math.round(ny/(rowH()+GAP)));
+    const snapRow = Math.max(0, Math.round(ny/(dragRowH+GAP)));
     const ghostRect = { id:'__ghost__', x:snapCol, y:snapRow, w:renderW, h:wdata.h };
     const hits = getCollisions(ghostRect, wdata.id, state.widgets);
     ghost.className = 'drop-ghost ' + (hits.length===0 ? 'valid' : 'invalid');
-    const gpx = { left: snapCol*(colW+GAP), top: snapRow*(rowH()+GAP), width: pw, height: ph };
+    const gpx = { left: snapCol*(colW+GAP), top: snapRow*(dragRowH+GAP), width: pw, height: ph };
     ghost.style.left   = gpx.left   + 'px';
     ghost.style.top    = gpx.top    + 'px';
     ghost.style.width  = gpx.width  + 'px';
@@ -197,6 +216,7 @@ function makeWidget(wdata, layoutOverrides) {
 
   function onUp(e) {
     if (downX === 0 && downY === 0) return;
+    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
 
     // Final distance check: even if mousemove never fired (fast tap+release),
     // measure here and mark as dragged if moved beyond threshold.
@@ -224,7 +244,6 @@ function makeWidget(wdata, layoutOverrides) {
     // grid position without an animation "bounce". Other widgets pushed by
     // compact() keep their transitions and slide smoothly.
     el.style.transition = 'none';
-    el.style.zIndex = '';
     document.body.classList.remove('any-dragging');
 
     if (ghost) { ghost.style.display = 'none'; ghost = null; }
@@ -236,10 +255,14 @@ function makeWidget(wdata, layoutOverrides) {
     const newY = wdata._snapY ?? origY;
     wdata.x = newX; wdata.y = newY;
     delete wdata._snapX; delete wdata._snapY;
+    // Restore the row-based stacking order (same formula makeWidget() uses
+    // at creation) instead of clearing z-index — otherwise a widget that
+    // was just dragged permanently falls behind never-dragged siblings.
+    el.style.zIndex = 10 + wdata.y;
 
     pushDown(wdata, state.widgets);
     if (state.settings.compactMode !== false) compact(state.widgets);
-    clamp(wdata);
+    clamp(wdata, dragVc);
     debouncedSaveState();
     positionAll(); // only update CSS positions — no DOM teardown → no flash
   }
@@ -247,12 +270,16 @@ function makeWidget(wdata, layoutOverrides) {
   // _unbindDrag clears singleton handlers (if this widget owns them) and resize handles
   el._unbindDrag = () => {
     if (_docMoveH === onMove) { _docMoveH = null; _docUpH = null; }
+    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
     el.querySelectorAll('.rh').forEach(h => h._unbind?.());
   };
 
   /* ────────── RESIZE ────────── */
   el.querySelectorAll('.rh').forEach(handle => {
     let resizing=false, rsX=0, rsY=0, rsW=0, rsH=0, rsColX=0, rsRowY=0;
+    // Same idea as drag: cache grid geometry once per resize session and
+    // batch style writes into a single rAF per frame.
+    let rsGeom=null, rsRAF=null, rsPendingEvent=null;
     const dir = handle.dataset.dir;
 
     handle.addEventListener('mousedown', e => {
@@ -261,18 +288,32 @@ function makeWidget(wdata, layoutOverrides) {
       resizing=true; rsX=e.clientX; rsY=e.clientY;
       rsW=wdata.w; rsH=wdata.h;
       rsColX=wdata.x; rsRowY=wdata.y;
+      rsGeom = { colW: cw(), vc: visibleCols(), rowH: rowH() };
       el.style.transition='none';
       _docMoveH = onResizeMove; _docUpH = onResizeUp;
     });
 
     function onResizeMove(e) {
       if (!resizing) return;
-      const colW = cw();
-      const dCol = Math.round((e.clientX-rsX)/(colW+GAP));
-      const dRow = Math.round((e.clientY-rsY)/(rowH()+GAP));
-      const rules = SIZE_RULES[wdata.type]||{minW:1,minH:1,maxW:COLS,maxH:20};
+      rsPendingEvent = e;
+      if (rsRAF) return;
+      rsRAF = requestAnimationFrame(processResizeMove);
+    }
 
-      if (dir==='se') { wdata.w=Math.max(rules.minW,Math.min(rules.maxW,COLS-wdata.x,rsW+dCol)); wdata.h=Math.max(rules.minH,Math.min(rules.maxH,rsH+dRow)); }
+    function processResizeMove() {
+      rsRAF = null;
+      const e = rsPendingEvent;
+      if (!e || !resizing) return;
+      const colW = rsGeom.colW;
+      const dCol = Math.round((e.clientX-rsX)/(colW+GAP));
+      const dRow = Math.round((e.clientY-rsY)/(rsGeom.rowH+GAP));
+      // Bound to this session's cached visible-column count (rsGeom.vc), not
+      // the full model width — resizing a widget past what's actually on
+      // screen is exactly what let render's display-only clamp stack it on
+      // top of something else (see tidyLayout's history).
+      const rules = SIZE_RULES[wdata.type]||{minW:1,minH:1,maxW:rsGeom.vc,maxH:20};
+
+      if (dir==='se') { wdata.w=Math.max(rules.minW,Math.min(rules.maxW,rsGeom.vc-wdata.x,rsW+dCol)); wdata.h=Math.max(rules.minH,Math.min(rules.maxH,rsH+dRow)); }
       else if (dir==='sw') {
         const newW=Math.max(rules.minW,Math.min(rules.maxW,rsW-dCol));
         const newX=Math.max(0,rsColX+(rsW-newW));
@@ -280,7 +321,7 @@ function makeWidget(wdata, layoutOverrides) {
       } else if (dir==='ne') {
         const newH=Math.max(rules.minH,Math.min(rules.maxH,rsH-dRow));
         wdata.y=Math.max(0,rsRowY+(rsH-newH)); wdata.h=newH;
-        wdata.w=Math.max(rules.minW,Math.min(rules.maxW,COLS-wdata.x,rsW+dCol));
+        wdata.w=Math.max(rules.minW,Math.min(rules.maxW,rsGeom.vc-wdata.x,rsW+dCol));
       } else if (dir==='nw') {
         const newW=Math.max(rules.minW,Math.min(rules.maxW,rsW-dCol));
         const newH=Math.max(rules.minH,Math.min(rules.maxH,rsH-dRow));
@@ -288,30 +329,43 @@ function makeWidget(wdata, layoutOverrides) {
         wdata.w=newW; wdata.h=newH;
       }
 
-      // Pomodoro & link: enforce square (w === h)
-      if (wdata.type === 'pomodoro' || wdata.type === 'link') {
-        const sq = (dir==='ne'||dir==='nw') ? wdata.h : wdata.w;
-        const sqClamped = Math.max(rules.minW, Math.min(rules.maxW, sq));
-        if (dir==='nw'||dir==='sw') wdata.x = Math.max(0, rsColX+(rsW-sqClamped));
-        if (dir==='nw'||dir==='ne') wdata.y = Math.max(0, rsRowY+(rsH-sqClamped));
-        wdata.w = sqClamped; wdata.h = sqClamped;
+      // Aspect-locked types (link/pomodoro square, weather/clock 3:2, ...):
+      // derive the non-driving side from whichever dimension this handle
+      // moves most directly, instead of letting w/h resize independently.
+      const ratio = ASPECT_LOCK[wdata.type];
+      if (ratio) {
+        let newW, newH;
+        if (dir==='ne'||dir==='nw') {
+          newH = Math.max(rules.minH, Math.min(rules.maxH, wdata.h));
+          newW = Math.max(rules.minW, Math.min(rules.maxW, Math.round(newH * ratio)));
+        } else {
+          newW = Math.max(rules.minW, Math.min(rules.maxW, wdata.w));
+          newH = Math.max(rules.minH, Math.min(rules.maxH, Math.round(newW / ratio)));
+        }
+        if (dir==='nw'||dir==='sw') wdata.x = Math.max(0, rsColX+(rsW-newW));
+        if (dir==='nw'||dir==='ne') wdata.y = Math.max(0, rsRowY+(rsH-newH));
+        wdata.w = newW; wdata.h = newH;
       }
 
-      const px = wPxResponsive(wdata, null);
+      const px = wPxResponsive(wdata, null, rsGeom);
       el.style.left=px.left+'px'; el.style.top=px.top+'px';
       el.style.width=px.width+'px'; el.style.height=px.height+'px';
     }
 
     function onResizeUp() {
       if (!resizing) return; resizing=false;
+      if (rsRAF) { cancelAnimationFrame(rsRAF); rsRAF = null; }
       el.style.transition='';
       pushDown(wdata, state.widgets);
       if (state.settings.compactMode !== false) compact(state.widgets);
-      clamp(wdata); debouncedSaveState();
-      renderAll();
+      clamp(wdata, rsGeom.vc); debouncedSaveState();
+      positionAll(); // resize never adds/removes widgets — no need for a full renderAll()
     }
 
-    handle._unbind = () => { if (_docMoveH === onResizeMove) { _docMoveH = null; _docUpH = null; } };
+    handle._unbind = () => {
+      if (_docMoveH === onResizeMove) { _docMoveH = null; _docUpH = null; }
+      if (rsRAF) { cancelAnimationFrame(rsRAF); rsRAF = null; }
+    };
   });
 
   return el;
@@ -328,23 +382,27 @@ function addWidget(wdata) {
   state.widgets.push(wdata);
   if (state.settings.compactMode !== false) compact(state.widgets);
   saveState();
-  renderAll();
+
+  // Only the new widget needs a fresh DOM node — everything else that
+  // compact() may have shifted just needs repositioning, not a full rebuild.
+  const canvas = document.getElementById('grid-canvas');
+  const el = makeWidget(wdata, null);
+  if (el) canvas.appendChild(el);
+  positionAll();
   updateEmptyHint();
 }
 
-function removeWidget(id, skipConfirm=false) {
-  function doRemove() {
-    const el = document.querySelector(`.widget[data-id="${id}"]`);
-    if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
-    // Clean up any stored custom image for this link widget
-    localStorage.removeItem('dash_limg_' + id);
-    state.widgets = state.widgets.filter(w=>w.id!==id);
-    if (state.settings.compactMode !== false) compact(state.widgets);
-    saveState();
-    updateEmptyHint();
-  }
-  if (skipConfirm) { doRemove(); return; }
-  doRemove(); // Delete badge already confirmed by user clicking −
+// Confirmation (if any) is the caller's responsibility — this function
+// always removes immediately.
+function removeWidget(id) {
+  const el = document.querySelector(`.widget[data-id="${id}"]`);
+  if (el) { cleanupWidget(id); el._unbindDrag?.(); el.style.opacity='0'; el.style.transform='scale(.88)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }
+  // Clean up any stored custom image for this link widget
+  localStorage.removeItem('dash_limg_' + id);
+  state.widgets = state.widgets.filter(w=>w.id!==id);
+  if (state.settings.compactMode !== false) compact(state.widgets);
+  saveState();
+  updateEmptyHint();
 }
 
 function renderAll() {
@@ -363,10 +421,12 @@ function renderAll() {
   });
   canvas.style.minHeight = Math.max(ry(maxRow+2), document.getElementById('grid-outer').clientHeight-40) + 'px';
 
+  const frag = document.createDocumentFragment();
   state.widgets.forEach(w => {
     const el = makeWidget(w, layoutOverrides);
-    if (el) canvas.appendChild(el);
+    if (el) frag.appendChild(el);
   });
+  canvas.appendChild(frag);
   updateEmptyHint();
   if (editMode) buildGridBg();
 }
@@ -402,14 +462,29 @@ function positionAll() {
       el.style.top    = px.top    + 'px';
       el.style.width  = px.width  + 'px';
       el.style.height = px.height + 'px';
+      // Keep stacking order in sync with the new row — otherwise a widget
+      // that moved to a different row keeps its old row's z-index and can
+      // render on top of/behind the wrong sibling while they slide past
+      // each other in this reflow's transition.
+      el.style.zIndex = 10 + w.y;
     });
   });
 }
 
-// Reflow on resize
+// Reflow when #grid-outer's rendered size changes. A ResizeObserver on the
+// element itself (rather than a `window` "resize" listener) is what catches
+// browser page-zoom changes reliably — zooming resizes #grid-outer's actual
+// box, but doesn't consistently fire a window resize event, which used to
+// leave every widget positioned for the pre-zoom width: at a wider zoomed-in
+// render, that stale layout no longer fit and produced horizontal overflow.
 let resizeTimer;
-window.addEventListener('resize', () => {
+function scheduleReflow() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); renderAll(); }, 120);
-});
+  resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); positionAll(); }, 120);
+}
+window.addEventListener('resize', scheduleReflow);
 window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });
+if (typeof ResizeObserver !== 'undefined') {
+  const gridOuterEl = document.getElementById('grid-outer');
+  if (gridOuterEl) new ResizeObserver(scheduleReflow).observe(gridOuterEl);
+}

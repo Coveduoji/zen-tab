@@ -64,6 +64,15 @@ function renderSettings() {
   const thL=(!dark&&!isMonet)?' active':'', thD=dark?' active':'', thM=isMonet?' active':'';
   const lzh=zh?' active-2':'', len=!zh?' active-2':'';
 
+  // Rebuilding innerHTML below destroys whatever element currently has
+  // focus (e.g. a theme-card activated via keyboard) — the browser silently
+  // drops focus to <body> with no visible indicator anywhere. Remember it
+  // by id so it can be restored to its freshly-rebuilt counterpart at the
+  // end of this function.
+  const settingsBodyEl = document.getElementById('settings-body');
+  const prevFocusId = (settingsBodyEl?.contains(document.activeElement) && document.activeElement.id)
+    ? document.activeElement.id : null;
+
   document.getElementById('settings-body').innerHTML = `
     <div class="s-section">
       <div class="s-sec-title">${t('appearance')}</div>
@@ -141,7 +150,7 @@ function renderSettings() {
       <div class="s-sec-title">${t('shortcuts')}</div>
       <div class="s-row"><div class="s-label">${t('cmd_palette')}</div><span class="s-kbd">Ctrl+K</span></div>
       <div class="s-row"><div class="s-label">${t('add_widget')}</div><span class="s-kbd">Ctrl+A</span></div>
-      <div class="s-row"><div class="s-label">${t('toggle_theme')}</div><span class="s-kbd">Ctrl+T</span></div>
+      <div class="s-row"><div class="s-label">${t('toggle_theme')}</div><span class="s-kbd">Ctrl+M</span></div>
       <div class="s-row"><div class="s-label">${t('edit_mode_label')}</div><span class="s-kbd">Ctrl+E</span></div>
       <div class="s-row"><div class="s-label">${zh?'关闭面板':'Close Panel'}</div><span class="s-kbd">Esc</span></div>
       <div class="s-row"><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><span class="s-kbd">Ctrl+P</span></div>
@@ -179,9 +188,9 @@ function renderSettings() {
   }
   body.querySelector('#s-bg-sample')?.addEventListener('click',function(){triggerBgPaletteExtraction(this);});
   body.querySelector('#s-bg-palette-clear')?.addEventListener('click',function(){clearBgPalette(this);});
-  body.querySelector('#s-blur')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.blur=parseFloat(e.target.value);const v=body.querySelector('#s-blur-val');if(v)v.textContent=Math.round(parseFloat(e.target.value))+'px';saveState();applyBackground();});
-  body.querySelector('#s-overlay')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.overlay=parseFloat(e.target.value);const v=body.querySelector('#s-ov-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';saveState();applyBackground();});
-  body.querySelector('#s-brightness')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.brightness=parseFloat(e.target.value);const v=body.querySelector('#s-bright-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';saveState();applyBackground();});
+  body.querySelector('#s-blur')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.blur=parseFloat(e.target.value);const v=body.querySelector('#s-blur-val');if(v)v.textContent=Math.round(parseFloat(e.target.value))+'px';debouncedSaveState();applyBackground();});
+  body.querySelector('#s-overlay')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.overlay=parseFloat(e.target.value);const v=body.querySelector('#s-ov-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';debouncedSaveState();applyBackground();});
+  body.querySelector('#s-brightness')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.brightness=parseFloat(e.target.value);const v=body.querySelector('#s-bright-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';debouncedSaveState();applyBackground();});
   body.querySelectorAll('[data-e]').forEach(b=>b.addEventListener('click',()=>{setEng(b.dataset.e);renderSettings();toast(t('engine_switched',ENGINES[b.dataset.e].label),'ok');}));
   body.querySelector('#s-add')?.addEventListener('click',()=>{closeSettings();openMkt();});
   body.querySelector('#s-add-link')?.addEventListener('click',()=>{closeSettings();setTimeout(()=>createQuickLink(),150);});
@@ -197,4 +206,6 @@ function renderSettings() {
       saveState();applyTheme(state.settings.theme,null);renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
     });
   });
+
+  if (prevFocusId) document.getElementById(prevFocusId)?.focus({ preventScroll: true });
 }

@@ -23,21 +23,26 @@ function exitEditMode() {
 }
 
 // ── Grid background ───────────────────────────────────────
+// Sized to the *visible* column count — drawing the full 20-column model
+// width regardless of viewport would show empty cells past where a widget
+// could ever actually be dropped (see tidyLayout's history for why the
+// model width and the visible width must not be conflated).
 let _gridBgCols = 0, _gridBgRows = 0;
 function buildGridBg() {
   const el   = document.getElementById('grid-bg');
+  const cols = visibleCols();
   const rows = Math.max(14, Math.ceil(document.getElementById('grid-canvas').offsetHeight / (rowH()+GAP)));
-  if (_gridBgCols === COLS && _gridBgRows === rows) {
-    el.style.gridTemplateColumns = `repeat(${COLS}, ${cw()}px)`;
+  if (_gridBgCols === cols && _gridBgRows === rows) {
+    el.style.gridTemplateColumns = `repeat(${cols}, ${cw()}px)`;
     el.style.gridTemplateRows    = `repeat(${rows}, ${rowH()}px)`;
     return;
   }
-  _gridBgCols = COLS; _gridBgRows = rows;
+  _gridBgCols = cols; _gridBgRows = rows;
   el.innerHTML = '';
-  el.style.gridTemplateColumns = `repeat(${COLS}, ${cw()}px)`;
+  el.style.gridTemplateColumns = `repeat(${cols}, ${cw()}px)`;
   el.style.gridTemplateRows    = `repeat(${rows}, ${rowH()}px)`;
   el.style.gap = `${GAP}px`;
-  for (let i = 0; i < COLS * rows; i++) {
+  for (let i = 0; i < cols * rows; i++) {
     const c = document.createElement('div'); c.className = 'grid-bg-cell'; el.appendChild(c);
   }
 }
@@ -75,7 +80,7 @@ function initEditMode() {
   document.getElementById('btn-done').addEventListener('click', exitEditMode);
   document.getElementById('btn-tidy').addEventListener('click', () => {
     tidyLayout(state.widgets); compact(state.widgets);
-    saveState(); renderAll();
+    debouncedSaveState(); positionAll();
     toast(t('layout_tidied'), 'ok');
   });
   document.getElementById('grid-canvas').addEventListener('mousedown', startLongPress);

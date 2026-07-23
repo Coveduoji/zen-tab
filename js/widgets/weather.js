@@ -62,10 +62,19 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
     /* ── 7-day forecast modal ── */
     function openForecastModal(fullData) {
       const existing = document.getElementById('weather-forecast-modal');
-      if (existing) { existing.remove(); return; }
+      if (existing) {
+        const sameWidget = existing.dataset.ownerId === id;
+        existing.remove();
+        // Clicking the widget that already owns the open modal just closes
+        // it (toggle). Clicking a *different* weather widget instance
+        // replaces it with that widget's own forecast instead of only
+        // closing whatever happened to be open.
+        if (sameWidget) return;
+      }
 
       const ov = document.createElement('div');
       ov.id = 'weather-forecast-modal';
+      ov.dataset.ownerId = id;
       ov.className = 'weather-modal-ov';
 
       const modal = document.createElement('div');
@@ -125,11 +134,18 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
       ov.appendChild(modal);
       document.body.appendChild(ov);
 
-      closeBtn.addEventListener('click', e => { e.stopPropagation(); ov.remove(); });
-      ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-      document.addEventListener('keydown', function esc(e) {
-        if (e.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', esc); }
-      });
+      // Every close path must remove the Escape listener — previously it
+      // only cleaned itself up when Escape was the thing that closed the
+      // modal, so closing via the × button or an outside click leaked one
+      // "keydown" listener on document per open/close cycle.
+      function escHandler(e) { if (e.key === 'Escape') closeModal(); }
+      function closeModal() {
+        ov.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+      closeBtn.addEventListener('click', e => { e.stopPropagation(); closeModal(); });
+      ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+      document.addEventListener('keydown', escHandler);
     }
 
     /* ── Fetch with 7-day data ── */
@@ -225,41 +241,20 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
         openForecastModal(cached);
       } else {
         fetchWeather(false);
-        setTimeout(() => {
+        registerTimer(id, setTimeout(() => {
           const c2 = weatherCache.load();
           if (c2 && c2.daily) openForecastModal(c2);
-        }, 3000);
+        }, 3000));
       }
     });
 
     fetchWeather(false);
 
-    /* ── Responsive scale: same approach as pomodoro ── */
+    /* ── Responsive scale: shared helper (also used by clock/pomodoro) ── */
     const weatherWidget = body.closest('.widget');
-    // natural size of .we-row: icon ~3.2rem + info ~80px wide, total ~120x80px
-    const NAT_W = 130;
-    const NAT_H = 70;
-    const HEADER_H = 34;
-
-    function applyWeatherScale() {
-      if (!weatherWidget) return;
-      const bw = weatherWidget.offsetWidth;
-      const bh = weatherWidget.offsetHeight;
-      if (!bw || !bh) return;
-      const availW = bw - 24;
-      const availH = bh - HEADER_H - 24;
-      const scale = Math.min(availW / NAT_W, availH / NAT_H);
-      const clamped = Math.min(Math.max(scale, 0.6), 2.5);
-      row.style.transform = `scale(${clamped.toFixed(4)})`;
-    }
-
-    requestAnimationFrame(applyWeatherScale);
-
-    if (typeof ResizeObserver !== 'undefined' && weatherWidget) {
-      const ro = new ResizeObserver(applyWeatherScale);
-      ro.observe(weatherWidget);
-      // Store disconnect in widget element for ResizeObserver teardown
-      weatherWidget._roDisconnect = () => ro.disconnect();
+    // natural size of .we-row: icon ~3.2rem + info ~80px wide, total ~130x70px
+    if (weatherWidget) {
+      attachAutoScale(id, weatherWidget, row, 130, 70, { minScale: 0.6, maxScale: 2.5, padX: 24, padY: 24, headerH: 34 });
     }
   }
 });

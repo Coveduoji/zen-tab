@@ -12,13 +12,21 @@ function confirm2(title, sub, okLabel='OK', cb) {
   document.getElementById('cb-sub').textContent   = sub;
   document.getElementById('cb-ok').textContent    = okLabel;
   document.getElementById('cb-cancel').textContent = lang==='zh' ? '取消' : 'Cancel';
-  document.getElementById('confirm-overlay').classList.add('open');
+  const overlay = document.getElementById('confirm-overlay');
+  overlay.classList.add('open');
   const ok     = document.getElementById('cb-ok');
   const cancel = document.getElementById('cb-cancel');
+  // Escape / click-outside both cancel, matching every other modal in the app.
+  function escHandler(e) { if (e.key === 'Escape') { close(); cb(false); } }
+  function overlayHandler(e) { if (e.target === overlay) { close(); cb(false); } }
   const close  = () => {
-    document.getElementById('confirm-overlay').classList.remove('open');
+    overlay.classList.remove('open');
     ok.onclick = null; cancel.onclick = null;
+    overlay.removeEventListener('click', overlayHandler);
+    document.removeEventListener('keydown', escHandler);
   };
   ok.onclick     = () => { close(); cb(true);  };
   cancel.onclick = () => { close(); cb(false); };
+  overlay.addEventListener('click', overlayHandler);
+  document.addEventListener('keydown', escHandler);
 }

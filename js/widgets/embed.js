@@ -3,16 +3,12 @@ reg({ type:'embed', get name(){return t('w_embed');}, get desc(){return t('w_emb
   render(body, cfg, id) {
     cfg.url = cfg.url || '';
 
-    /* ── URL sanitiser ── */
-    function sanitiseUrl(raw) {
-      const s = (raw || '').trim();
-      if (!s) return '';
-      return /^https?:\/\//i.test(s) ? s : 'https://' + s;
-    }
-
     /* ── Build embed UI with createElement (no innerHTML for URLs) ── */
     function buildEmbed(rawUrl) {
-      const url = sanitiseUrl(rawUrl);
+      // Same URL normaliser/protocol filter used everywhere else (link
+      // modal, embed-edit modal) — previously this widget had its own
+      // looser copy that didn't block javascript:/data: URLs.
+      const url = normalizeUrl(rawUrl);
 
       /* clear previous content cleanly */
       body.innerHTML = '';
@@ -94,12 +90,12 @@ reg({ type:'embed', get name(){return t('w_embed');}, get desc(){return t('w_emb
 
       if (url) {
         /* Heuristic: if iframe is still blank after 8 s it's likely blocked */
-        loadTimer = setTimeout(() => {
+        loadTimer = registerTimer(id, setTimeout(() => {
           try {
             const doc = iframe.contentDocument || iframe.contentWindow.document;
             if (!doc || !doc.body || doc.body.innerHTML.trim() === '') showBlocked();
           } catch(_) { /* cross-origin = loaded fine */ }
-        }, 8000);
+        }, 8000));
 
         iframe.addEventListener('load', () => {
           clearTimeout(loadTimer);
@@ -126,7 +122,7 @@ reg({ type:'embed', get name(){return t('w_embed');}, get desc(){return t('w_emb
         blocked.style.display = 'none';
         /* Force reload by briefly clearing src */
         iframe.src = '';
-        requestAnimationFrame(() => { iframe.src = url; });
+        registerTimer(id, requestAnimationFrame(() => { iframe.src = url; }));
       });
       btnEdit.addEventListener('click', e => {
         e.stopPropagation();
@@ -187,7 +183,7 @@ function showEmbedModal(currentUrl, onSave) {
 
   const titleEl = document.createElement('div');
   titleEl.style.cssText = 'font-size:.9rem;font-weight:700;margin-bottom:14px';
-  titleEl.textContent = lang === 'zh' ? '嵌入网页' : 'Embed Website';
+  titleEl.textContent = t('embed_modal_title');
 
   const lblEl = document.createElement('div');
   lblEl.style.cssText = 'font-size:.75rem;color:var(--text-muted);margin-bottom:6px';
@@ -208,7 +204,7 @@ function showEmbedModal(currentUrl, onSave) {
 
   const saveBtn = document.createElement('button');
   saveBtn.style.cssText = 'padding:7px 16px;border-radius:9px;border:none;background:var(--accent);color:var(--text-on-accent);cursor:pointer;font-size:.8rem;font-weight:600';
-  saveBtn.textContent = lang === 'zh' ? '确定' : 'Save';
+  saveBtn.textContent = t('embed_save_btn');
 
   row.append(cancelBtn, saveBtn);
   box.append(titleEl, lblEl, inp, row);

@@ -57,10 +57,24 @@ function _runRippleTransition(fromEl, commitFn, onDone) {
     if (isSelf) { _currentTransition = null; _rippleBusy = false; }
   };
 
-  transition.finished.then(() => {
-    cleanup(_currentTransition === transition);
-    if (_currentTransition === transition && onDone) onDone();
-  }).catch(() => cleanup(_currentTransition === transition));
+  // transition.finished can fail to ever settle (observed in testing —
+  // the ripple still plays and the theme still applies, but the promise
+  // itself never resolves or rejects). Since onDone is what re-renders the
+  // settings panel (and restores focus to the matching control) after a
+  // theme switch, a hung promise here means that panel's selection
+  // highlight — and keyboard focus — stays stuck on the old theme forever.
+  // A timeout fallback guarantees onDone always eventually runs.
+  let settled = false;
+  const finish = (isSelf) => {
+    if (settled) return;
+    settled = true;
+    cleanup(isSelf);
+    if (isSelf && onDone) onDone();
+  };
+  transition.finished
+    .then(() => finish(_currentTransition === transition))
+    .catch(() => finish(_currentTransition === transition));
+  setTimeout(() => finish(_currentTransition === transition), 1200);
 }
 
 function applyTheme(th, fromEl) {

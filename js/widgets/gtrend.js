@@ -16,7 +16,13 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
     }
 
     /* ── Language dot colour class ── */
-    const langClass = l => 'lang-' + (l||'').toLowerCase().replace(/[^a-z]/g,'');
+    // Symbol-only languages need an explicit alias — stripping non-letters
+    // from "C++"/"C#" would otherwise collapse both onto the "C" class.
+    const LANG_ALIAS = { 'c++': 'cpp', 'c#': 'csharp', 'f#': 'fsharp' };
+    const langClass = l => {
+      const key = (l || '').toLowerCase();
+      return 'lang-' + (LANG_ALIAS[key] || key.replace(/[^a-z0-9]/g, ''));
+    };
 
     /* ── GitHub Search API → item array ── */
     function parseApiResponse(data) {

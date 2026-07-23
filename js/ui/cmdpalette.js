@@ -8,7 +8,7 @@ function getCmds() {
     { id:'fs', get n(){return t('cmd_focus_search');}, get h(){return t('cmd_fs_h');}, ico:'🔍', fn:()=>{closeCmd();document.getElementById('search-input').focus();} },
     { id:'em', get n(){return t('cmd_edit_mode');}, get h(){return t('cmd_em_h');}, ico:'✏️', fn:()=>{closeCmd();editMode?exitEditMode():enterEditMode();} },
     { id:'ty', get n(){return t('cmd_tidy');}, get h(){return t('cmd_tidy_h');}, ico:'🧹',
-      fn(){closeCmd();tidyLayout(state.widgets);compact(state.widgets);saveState();renderAll();toast(lang==='zh'?'布局已整理':'Layout tidied','ok');} },
+      fn(){closeCmd();tidyLayout(state.widgets);compact(state.widgets);debouncedSaveState();positionAll();toast(lang==='zh'?'布局已整理':'Layout tidied','ok');} },
   ];
   CATALOG.forEach(item => {
     const d = REG[item.type]; if (!d) return;

@@ -47,7 +47,7 @@ function saveState() {
   const bgValue = state.settings.background?.value || '';
   const isBgImg = state.settings.background?.type === 'image' && bgValue.startsWith('data:');
   try {
-    const slim = JSON.parse(JSON.stringify({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings }));
+    const slim = structuredClone({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings });
     if (isBgImg) {
       localStorage.setItem('dash_bg_img', bgValue);
       slim.settings.background.value = '__dash_bg_img__';
@@ -66,7 +66,7 @@ function saveState() {
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
       try {
-        const minimal = JSON.parse(JSON.stringify({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings }));
+        const minimal = structuredClone({ version: STORAGE_VERSION, widgets: state.widgets, settings: state.settings });
         if (isBgImg) minimal.settings.background.value = '__dash_bg_img__';
         minimal.widgets.forEach(w => { if (w.type === 'link') delete w.config?.customImg; });
         localStorage.setItem('dash_v3', JSON.stringify(minimal));
@@ -82,11 +82,20 @@ if (!state.widgets)  state.widgets  = DEF_WIDGETS.map(w => ({...w}));
 // Sync lang global (defined in i18n.js) from saved settings
 lang = state.settings.lang || 'zh';
 
-// Sanitize geometry on load
+// Sanitize geometry on load — re-derive h from w for any aspect-locked
+// widget type (link/pomodoro square, weather/clock 3:2, ...) so widgets
+// saved under older size rules snap back to a valid ratio instead of just
+// being independently min/max clamped into a distorted shape.
+const _bootVc = visibleCols();
 state.widgets.forEach(w => {
-  clamp(w);
-  if (w.type === 'pomodoro' || w.type === 'link') {
-    const sq = Math.max(w.w, w.h); w.w = sq; w.h = sq; clamp(w);
+  clamp(w, _bootVc);
+  const ratio = ASPECT_LOCK[w.type];
+  if (ratio) {
+    // For square types keep the old "take the larger side" behavior; for
+    // wide types (3:2 etc.) width is the natural driving dimension.
+    w.w = ratio === 1 ? Math.max(w.w, w.h) : w.w;
+    w.h = Math.round(w.w / ratio);
+    clamp(w, _bootVc);
   }
 });
 

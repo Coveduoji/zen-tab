@@ -131,27 +131,25 @@ function initPanels() {
     const slot = findFreeSlot(wdata.w, wdata.h, state.widgets); wdata.x=slot.x; wdata.y=slot.y;
     state.widgets.unshift(wdata);
     if (state.settings.compactMode !== false) compact(state.widgets);
-    saveState(); renderAll();
+    debouncedSaveState(); positionAll();
   });
   document.getElementById('ctx-del').addEventListener('click', () => {
     const id = _ctxWidgetId; closeCtxMenu();
     confirm2(t('del_confirm_t'), t('del_confirm_s'), t('del_btn'), ok => {
-      if (ok) { removeWidget(id, true); toast(t('widget_removed'), ''); }
+      if (ok) { removeWidget(id); toast(t('widget_removed'), ''); }
     });
   });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const tag = document.activeElement.tagName;
-    if (tag==='INPUT'||tag==='TEXTAREA') { if (e.key==='Escape') document.activeElement.blur(); return; }
-    if (e.ctrlKey||e.metaKey) {
-      if (e.key==='k') { e.preventDefault(); openCmd(); }
-      else if (e.key==='a') { e.preventDefault(); openMkt(); }
-      else if (e.key==='t') { e.preventDefault(); const btn=document.getElementById('fab-theme'); const cyc={light:'dark',dark:'monet',monet:'light'}; applyTheme(cyc[state.settings.theme]||'dark',btn); toast(t('theme_switched'),'ok'); }
-      else if (e.key==='e') { e.preventDefault(); editMode?exitEditMode():enterEditMode(); }
-      else if (e.key==='p') { e.preventDefault(); pureMode?exitPureMode():enterPureMode(); }
-    }
+    const inInput = tag === 'INPUT' || tag === 'TEXTAREA';
+
+    // Escape always falls through to modal/panel closing, even when a modal's
+    // input still has focus — otherwise the first press only blurs and a
+    // second press is needed to actually close anything.
     if (e.key==='Escape') {
+      if (inInput) document.activeElement.blur();
       if (pureMode) { exitPureMode(); return; }
       const anyModal = document.querySelector('.modal-bg.open');
       if (anyModal) { anyModal.classList.remove('open'); return; }
@@ -159,6 +157,19 @@ function initPanels() {
       if (document.getElementById('ctx-menu').classList.contains('open')) { closeCtxMenu(); return; }
       if (_activePanel) { closeAllPanels(); return; }
       if (editMode) { exitEditMode(); return; }
+      return;
+    }
+    if (inInput) return;
+
+    if (e.ctrlKey||e.metaKey) {
+      if (e.key==='k') { e.preventDefault(); openCmd(); }
+      else if (e.key==='a') { e.preventDefault(); openMkt(); }
+      // Ctrl/Cmd+T is reserved by the browser for "open new tab" — the page
+      // never receives that keydown, so it was silently dead. Ctrl+M isn't
+      // claimed by Chrome's tab/window shortcuts.
+      else if (e.key==='m') { e.preventDefault(); const btn=document.getElementById('fab-theme'); const cyc={light:'dark',dark:'monet',monet:'light'}; applyTheme(cyc[state.settings.theme]||'dark',btn); toast(t('theme_switched'),'ok'); }
+      else if (e.key==='e') { e.preventDefault(); editMode?exitEditMode():enterEditMode(); }
+      else if (e.key==='p') { e.preventDefault(); pureMode?exitPureMode():enterPureMode(); }
     }
     if (e.key==='/') { e.preventDefault(); document.getElementById('search-input').focus(); }
   });

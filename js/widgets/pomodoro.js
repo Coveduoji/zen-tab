@@ -264,37 +264,11 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
     /* ── initial render ── */
     paint();
 
-    /* ── Responsive scale: 整体 transform:scale 缩放，保持比例 ── */
+    /* ── Responsive scale: shared helper (also used by clock/weather) ── */
     const pomWidget = body.closest('.widget');
-
-    // pom-wrap 的自然尺寸（CSS 中无 width/height 约束时的固有大小）
-    // ring 96 + label 14 + btns 36 + gap*2(8px) + padding 16 = 178px 高，96px 宽
-    const NAT_W = 96;
-    const NAT_H = 178;
-    const HEADER_H = 34; // w-header 实际高度（含 padding）
-
-    function applyPomScale() {
-      if (!pomWidget) return;
-      const bw = pomWidget.offsetWidth;
-      const bh = pomWidget.offsetHeight;
-      if (!bw || !bh) return;
-
-      const availW = bw  - 16;        // 左右留 8px
-      const availH = bh - HEADER_H - 16; // 减去 header 和上下留白
-
-      const scale = Math.min(availW / NAT_W, availH / NAT_H);
-      // 限制在 0.5 ~ 1.5 之间，允许放大不超过 1.5 倍
-      const clamped = Math.min(Math.max(scale, 0.5), 1.5);
-      wrap.style.transform = `scale(${clamped.toFixed(4)})`;
-    }
-
-    // 首次执行：等 widget append 到 DOM 后再量尺寸
-    requestAnimationFrame(applyPomScale);
-
-    if (typeof ResizeObserver !== 'undefined' && pomWidget) {
-      const ro = new ResizeObserver(applyPomScale);
-      ro.observe(pomWidget);
-      pomWidget._roDisconnect = () => ro.disconnect();
+    // pom-wrap 的自然尺寸：ring 96 + label 14 + btns 36 + gap*2(8px) + padding 16 = 178px 高，96px 宽
+    if (pomWidget) {
+      attachAutoScale(id, pomWidget, wrap, 96, 178, { minScale: 0.5, maxScale: 1.5, padX: 16, padY: 16, headerH: 34 });
     }
   }
 });

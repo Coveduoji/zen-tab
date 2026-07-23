@@ -21,6 +21,20 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
     function tasksForDate(all, dateStr) {
       return all.filter(t => t.date === dateStr);
     }
+    /* Shared by the week-view inline row and the day-detail modal so both
+       stay in sync instead of each re-implementing add/toggle themselves. */
+    function addTaskAt(dateStr, title) {
+      const tasks = loadTasks();
+      tasks.push({ id: genId(), title, date: dateStr, completed: false });
+      saveTasks(tasks);
+      return tasks;
+    }
+    function setTaskDone(taskId, done) {
+      const tasks = loadTasks();
+      const found = tasks.find(t => t.id === taskId);
+      if (found) { found.completed = done; saveTasks(tasks); }
+      return !!found;
+    }
     /* Today as YYYY-MM-DD */
     function todayStr() {
       const d = new Date();
@@ -123,13 +137,14 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
       const daysInPrev  = new Date(y, m,   0).getDate();
       const total = Math.ceil((startDow + daysInMonth) / 7) * 7;
 
-      /* Pre-aggregate task counts for THIS month only */
+      /* Pre-aggregate task counts by exact date. The grid below also shows
+         a handful of adjacent-month days (isOther) to fill out full weeks,
+         so this must not be filtered to "this month" — a filtered map made
+         those visible other-month cells show no dot even when they have
+         tasks, while opening them still correctly listed the tasks. */
       const countMap = {};
-      const mStr = y + '-' + String(m+1).padStart(2,'0') + '-';
       all.forEach(tk => {
-        if (tk.date && tk.date.startsWith(mStr)) {
-          countMap[tk.date] = (countMap[tk.date] || 0) + 1;
-        }
+        if (tk.date) countMap[tk.date] = (countMap[tk.date] || 0) + 1;
       });
 
       for (let i = 0; i < total; i++) {
@@ -258,9 +273,7 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
             openDayModal(dateStr);
             return;
           }
-          const tasks = loadTasks();
-          tasks.push({ id: genId(), title, date: dateStr, completed: false });
-          saveTasks(tasks);
+          addTaskAt(dateStr, title);
           addInp.value = '';
           renderWeek();
         };
@@ -313,9 +326,7 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
       cb.checked = tk.completed;
       cb.addEventListener('change', e => {
         e.stopPropagation();
-        const tasks = loadTasks();
-        const found = tasks.find(t => t.id === tk.id);
-        if (found) { found.completed = cb.checked; saveTasks(tasks); }
+        setTaskDone(tk.id, cb.checked);
         el.classList.toggle('completed', cb.checked);
         if (cb.checked) toast(t('cal_task_done'), 'ok');
       });
@@ -403,9 +414,7 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
           cb.type = 'checkbox'; cb.className = 'cal-modal-task-cb';
           cb.checked = tk.completed;
           cb.addEventListener('change', () => {
-            const all = loadTasks();
-            const found = all.find(t => t.id === tk.id);
-            if (found) { found.completed = cb.checked; saveTasks(all); }
+            setTaskDone(tk.id, cb.checked);
             row.classList.toggle('done', cb.checked);
             if (cb.checked) toast(t('cal_task_done'), 'ok');
           });
@@ -454,9 +463,7 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
       const doAdd = () => {
         const title = addInp.value.trim();
         if (!title) return;
-        const all = loadTasks();
-        all.push({ id: genId(), title, date: dateStr, completed: false });
-        saveTasks(all);
+        addTaskAt(dateStr, title);
         addInp.value = '';
         renderModalTasks();
         view === 'month' ? renderMonth() : renderWeek();
@@ -470,12 +477,17 @@ reg({ type:'todo', get name(){return t('w_todo');}, get desc(){return t('w_todo_
       ov.appendChild(modal);
       document.body.appendChild(ov);
 
-      /* close handlers */
-      closeBtn.addEventListener('click', () => ov.remove());
-      ov.addEventListener('click', e => { if (e.target===ov) ov.remove(); });
-      document.addEventListener('keydown', function esc(e) {
-        if (e.key==='Escape') { ov.remove(); document.removeEventListener('keydown',esc); }
-      });
+      /* close handlers — every path removes the Escape listener, not just
+         Escape itself, otherwise closing via × or an outside click leaks
+         one "keydown" listener on document per open/close cycle. */
+      function escHandler(e) { if (e.key==='Escape') closeModal(); }
+      function closeModal() {
+        ov.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+      closeBtn.addEventListener('click', closeModal);
+      ov.addEventListener('click', e => { if (e.target===ov) closeModal(); });
+      document.addEventListener('keydown', escHandler);
 
       /* focus add input */
       setTimeout(() => addInp.focus(), 80);
