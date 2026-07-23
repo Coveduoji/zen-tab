@@ -2,7 +2,7 @@
 // ── Grid constants ────────────────────────────────────────
 const SIZE_RULES = {
   clock:    { minW:3, minH:2, maxW:6, maxH:4, defW:3, defH:2 },
-  link:     { minW:1, minH:1, maxW:4, maxH:4, defW:1, defH:1 },
+  link:     { minW:1, minH:1, maxW:2, maxH:2, defW:1, defH:1 },
   notes:    { minW:2, minH:2, maxW:6, maxH:6, defW:4, defH:4 },
   todo:     { minW:3, minH:3, maxW:8, maxH:7, defW:5, defH:5 },
   weather:  { minW:3, minH:2, maxW:6, maxH:4, defW:3, defH:2 },
@@ -14,7 +14,10 @@ const SIZE_RULES = {
 // in both dimensions independently). Value is the width/height ratio.
 // notes/todo/gtrend/embed are intentionally left unlocked — more space there
 // means more visible content (text/cells/list rows), not a distorted icon.
-const ASPECT_LOCK = { link: 1, pomodoro: 1, weather: 3/2, clock: 3/2 };
+// link is also left unlocked (within its own tight 1-2 cell range via
+// SIZE_RULES) — icons should be freely resizable to 1×1/2×1/1×2/2×2, not
+// forced square.
+const ASPECT_LOCK = { pomodoro: 1, weather: 3/2, clock: 3/2 };
 // Absolute sanity ceiling on visibleCols() (e.g. an ultrawide monitor) —
 // every placement bound in this file uses the *live* visibleCols() itself,
 // not this constant, so a widget can never end up positioned somewhere
