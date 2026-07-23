@@ -731,7 +731,12 @@ body.edit-mode .widget.dragging {
 
 /* Delete badge (edit mode only) */
 .w-del-badge {
-  position: absolute; top: -8px; left: -8px; z-index: 200;
+  /* Inset (not negative-offset floating past the corner) — .widget has
+     overflow:hidden for its rounded corners/content clipping, so a child
+     positioned outside the box (or even right at its sharp corner, inside
+     the rounded curve) gets silently clipped down to a sliver. 5px clears
+     var(--r)'s corner curve at any of the current radius values. */
+  position: absolute; top: 5px; left: 5px; z-index: 200;
   width: 22px; height: 22px; border-radius: 50%;
   background: var(--danger); color: var(--text-on-accent); font-size: .75rem; font-weight: 700;
   display: none; align-items: center; justify-content: center;
@@ -754,7 +759,9 @@ body.edit-mode .w-resize-handles { display: block; }
   transition: transform .1s;
 }
 .rh:hover::before { transform: scale(1.25); }
-.rh.se { bottom: -1px; right: -1px; cursor: se-resize; }
+/* Same clipping reasoning as .w-del-badge above — inset instead of
+   floating past the corner, so .widget's overflow:hidden doesn't cut it. */
+.rh.se { bottom: 5px; right: 5px; cursor: se-resize; }
 
 /* Widget body */
 .w-body {
