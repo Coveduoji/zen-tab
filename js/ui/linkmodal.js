@@ -122,13 +122,15 @@ function initLinkModal() {
   document.getElementById('lm-img-file').addEventListener('change', e => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      linkCustomImg = ev.target.result; linkCustomEmoji = null;
+    e.target.value = '';
+    // Icons render at most a few hundred px — cap well above that (crisp
+    // even on high-DPI screens) instead of storing an unbounded original
+    // against the localStorage quota shared with every other custom icon.
+    resizeImageFile(file, 400).then(dataUrl => {
+      linkCustomImg = dataUrl; linkCustomEmoji = null;
       document.querySelectorAll('.lm-emoji-btn').forEach(b => b.classList.remove('sel'));
       _syncImgPreviewUI(); updateLinkPreview();
-    };
-    reader.readAsDataURL(file); e.target.value = '';
+    });
   });
   document.getElementById('lm-img-clear').addEventListener('click', e => {
     e.stopPropagation(); linkCustomImg = null; _syncImgPreviewUI(); updateLinkPreview();

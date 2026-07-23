@@ -51,6 +51,7 @@ function createQuickLink(prefill={}) {
     const r=SIZE_RULES['link']; const slot=findFreeSlot(r.defW,r.defH,state.widgets);
     const cfg={name:saved.name,url:saved.url};
     if (saved.emoji) cfg.emoji=saved.emoji;
+    if (saved.customImg) cfg.customImg=saved.customImg;
     addWidget({id:genId('link'),type:'link',x:slot.x,y:slot.y,w:r.defW,h:r.defH,config:cfg});
     toast(t('link_added'),'ok');
   }, false);

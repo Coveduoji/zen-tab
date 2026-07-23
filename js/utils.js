@@ -57,6 +57,34 @@ function makeLocalCache(key, ttlMs) {
   };
 }
 
+// ── Image downscale (canvas) ──────────────────────────────
+// For small UI-rendered images like custom link icons, which only ever
+// display at a few hundred px — storing an unbounded original wastes a lot
+// of the shared localStorage quota for detail nobody sees. Not used for the
+// background image, which is shown full-screen and kept at full quality.
+// Resolves to a PNG data URL (keeps transparency) capped at maxDim on the
+// longer side; never upscales a smaller source image.
+function resizeImageFile(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Favicon-fallback emoji for link widgets ───────────────
 function linkEmoji(host) {
   if (!host) return '🔗';
