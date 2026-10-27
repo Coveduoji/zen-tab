@@ -36,7 +36,7 @@ function _playThemeRipple(fromEl) {
   void el.offsetWidth; // restart the CSS animation
   el.classList.add('run');
   clearTimeout(_rippleTimer);
-  _rippleTimer = setTimeout(() => el.classList.remove('run'), 700);
+  _rippleTimer = setTimeout(() => el.classList.remove('run'), 1000);
 }
 
 function _afterThemeChange() {

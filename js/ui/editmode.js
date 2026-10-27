@@ -10,6 +10,9 @@ function enterEditMode() {
   document.getElementById('btn-edit-toggle')?.classList.add('active');
   document.getElementById('grid-bg').classList.add('visible');
   if (grid) grid.enableResize(true);
+  // Editing is for layout only: stop links/inputs/iframes from reacting.
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  document.querySelectorAll('#grid-canvas .widget').forEach(card => setWidgetInert(card, true));
   buildGridBg();
   toast(t('edit_mode_toast'), '');
 }
@@ -24,6 +27,7 @@ function exitEditMode() {
   bg.classList.remove('visible');
   bg.innerHTML = '';
   _gridBgCols = 0; _gridBgRows = 0;
+  document.querySelectorAll('#grid-canvas .widget').forEach(card => setWidgetInert(card, false));
   if (grid) grid.enableResize(false);
 }
 

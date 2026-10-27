@@ -57,6 +57,44 @@ function createQuickLink(prefill={}) {
   }, false);
 }
 
+// Parse one link per line. Accepted forms:
+//   Name,https://example.com   https://example.com,Name
+//   Name https://example.com   Name,github.com
+//   https://example.com
+function parseBulkLinks(raw) {
+  const looksUrl = s => /^(https?:\/\/|\/\/)/i.test(s) || /^[^\s,]+\.[a-z]{2,}(\/.*)?$/i.test(s);
+  const seen = new Set();
+  const out = [];
+  for (const line of String(raw).split(/\r?\n/).map(s => s.trim()).filter(Boolean)) {
+    let name = '', url = '';
+    const parts = line.split(/\s*[,|\t]\s*/).filter(Boolean);
+    if (parts.length >= 2) {
+      if (looksUrl(parts[0]) && !looksUrl(parts[1])) {
+        url = parts[0]; name = parts.slice(1).join(', ');
+      } else {
+        name = parts[0]; url = parts.slice(1).join(',');
+      }
+    } else {
+      const sp = line.split(/\s+/);
+      if (sp.length > 1 && looksUrl(sp[sp.length - 1])) {
+        url = sp.pop(); name = sp.join(' ');
+      } else {
+        url = line;
+      }
+    }
+    url = normalizeUrl(url);
+    if (!url || url === 'https://') continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    if (!name) {
+      try { name = new URL(url).hostname.replace(/^www\./, ''); }
+      catch (_) { name = url; }
+    }
+    out.push({ name: name.trim() || url, url });
+  }
+  return out;
+}
+
 function renderSettings() {
   const dark=state.settings.theme==='dark', isMonet=state.settings.theme==='monet';
   const monetHue=state.settings.monetHue||'lavender', zh=lang==='zh';
@@ -128,9 +166,10 @@ function renderSettings() {
       <div class="s-toggle-row" style="margin-top:4px"><div><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><div class="s-sub">${zh?'只显示时间和搜索框':'Show only clock and search'}</div></div><label class="s-toggle"><input type="checkbox" id="s-pure" ${pureMode?'checked':''}><span class="s-toggle-track"></span></label></div>
     </div>
     <div class="s-section">
-      <div class="s-sec-title">${t('active_widgets')}</div>
-      <div class="s-row"><div><div class="s-label">${t('active_widgets')}</div><div class="s-sub">${t('widget_count',state.widgets.length)}</div></div><button class="s-btn" id="s-add">${t('add_more')}</button></div>
-      <div class="s-row"><div class="s-label">${t('add_quick_link')}</div><button class="s-btn" id="s-add-link">＋ ${t('add_link')}</button></div>
+      <div class="s-sec-title">${zh?'批量添加快捷链接':'Batch Add Quick Links'}</div>
+      <div class="s-sub">${zh?'每行一个，支持「名称,https://example.com」或直接 URL':'One per line: "Name,https://example.com" or just a URL'}</div>
+      <textarea class="s-bulk-ta" id="s-bulk-links" rows="4" spellcheck="false" placeholder="GitHub,https://github.com&#10;Baidu,https://baidu.com&#10;https://example.com"></textarea>
+      <div class="s-row" style="justify-content:flex-end;margin-top:8px"><button class="s-btn" id="s-bulk-add">${zh?'批量添加':'Add All'}</button></div>
     </div>
     <div class="s-section">
       <div class="s-sec-title">${t('search_engine')}</div>
@@ -206,8 +245,21 @@ function renderSettings() {
   bindBgSlider('s-overlay', 's-ov-val', v => { state.settings.background.overlay = v; }, v => Math.round(v * 100) + '%');
   bindBgSlider('s-brightness', 's-bright-val', v => { state.settings.background.brightness = v; }, v => Math.round(v * 100) + '%');
   body.querySelectorAll('[data-e]').forEach(b=>b.addEventListener('click',()=>{setEng(b.dataset.e);renderSettings();toast(t('engine_switched',ENGINES[b.dataset.e].label),'ok');}));
-  body.querySelector('#s-add')?.addEventListener('click',()=>{closeSettings();openMkt();});
-  body.querySelector('#s-add-link')?.addEventListener('click',()=>{closeSettings();setTimeout(()=>createQuickLink(),150);});
+  body.querySelector('#s-bulk-add')?.addEventListener('click', () => {
+    const ta = body.querySelector('#s-bulk-links');
+    const list = parseBulkLinks(ta?.value || '');
+    if (!list.length) {
+      toast(zh ? '没有可添加的链接' : 'No valid links found', 'err');
+      return;
+    }
+    const added = addWidgets(list);
+    if (added) {
+      toast(zh ? `已添加 ${added} 个快捷链接` : `Added ${added} quick links`, 'ok');
+      if (ta) ta.value = '';
+    } else {
+      toast(zh ? '添加失败' : 'Could not add links', 'err');
+    }
+  });
   body.querySelector('#s-exp')?.addEventListener('click',()=>{
     const blob=new Blob([JSON.stringify({widgets:state.widgets,settings:state.settings},null,2)],{type:'application/json'});
     const blobUrl=URL.createObjectURL(blob);const a=document.createElement('a');a.href=blobUrl;a.download='dashboard.json';a.click();

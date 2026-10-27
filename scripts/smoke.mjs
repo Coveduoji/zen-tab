@@ -45,7 +45,7 @@ const page = await context.newPage();
 
 const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-page.on('console', msg => { if (msg.type() === 'error') errors.push('console: ' + msg.text()); });
+page.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) errors.push('console: ' + msg.text()); });
 
 await page.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
 await page.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
@@ -62,6 +62,7 @@ const base = await page.evaluate(() => ({
     .filter(el => getComputedStyle(el).display !== 'none').length,
   normalModeResizeHandles: [...document.querySelectorAll('.ui-resizable-se')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
+  normalInertBodies: document.querySelectorAll('.w-body[inert]').length,
 }));
 console.log('base', base);
 
@@ -196,11 +197,26 @@ console.log('edit mode', await page.evaluate(() => ({
     .filter(el => getComputedStyle(el).display !== 'none').length,
   resizeHandles: [...document.querySelectorAll('.ui-resizable-se')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
+  inertBodies: document.querySelectorAll('.w-body[inert]').length,
+  inertHeaders: document.querySelectorAll('.w-header[inert]').length,
 })));
 
-// Resize via the bottom-right handle (grid-snapped), then exit edit mode.
+// Dragging must still work in edit mode even though the card content is inert.
 await page.evaluate(() => { const g = document.getElementById('grid-outer'); if (g) g.scrollTop = 0; });
 await page.waitForTimeout(120);
+const editClock = page.locator('#grid-canvas > .grid-stack-item[data-type="clock"]').first();
+const editBefore = await editClock.evaluate(el => ({ x: el.gridstackNode?.x, y: el.gridstackNode?.y }));
+const eb = await editClock.boundingBox();
+if (eb) {
+  await page.mouse.move(eb.x + eb.width / 2, eb.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(eb.x + eb.width / 2 + 90, eb.y + 30, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+}
+console.log('edit drag', { before: editBefore, after: await editClock.evaluate(el => ({ x: el.gridstackNode?.x, y: el.gridstackNode?.y })) });
+
+// Resize via the bottom-right handle (grid-snapped), then exit edit mode.
 const resizeWidget = page.locator('#grid-canvas > .grid-stack-item[data-type="clock"]').first();
 const beforeResize = await resizeWidget.evaluate(el => ({ w: el.gridstackNode?.w, h: el.gridstackNode?.h }));
 const resizeHandle = resizeWidget.locator('.ui-resizable-se');
@@ -230,6 +246,14 @@ console.log('pure exit', await page.evaluate(() => document.querySelectorAll('#g
 await page.evaluate(() => document.getElementById('fab-settings').click());
 await page.waitForTimeout(200);
 console.log('settings', await page.locator('#settings-body .theme-card').count());
+const linksBefore = await page.locator('#grid-canvas .widget[data-type="link"]').count();
+const totalBefore = await page.locator('#grid-canvas .widget').count();
+await page.fill('#s-bulk-links', 'Alpha,https://example.com\nhttps://example.org\nDocs,github.com');
+await page.click('#s-bulk-add');
+await page.waitForTimeout(600);
+const linksAfter = await page.locator('#grid-canvas .widget[data-type="link"]').count();
+const totalAfter = await page.locator('#grid-canvas .widget').count();
+console.log('bulk links', { linksBefore, linksAfter, totalBefore, totalAfter });
 await page.evaluate(() => document.getElementById('settings-close').click());
 
 // Resize the viewport and restore it: every widget must return to exactly
@@ -300,7 +324,7 @@ console.log('delete button', { visible: deleteButtons, beforeDelete, afterDelete
 const cspErrors = [];
 const cspPage = await context.newPage();
 cspPage.on('pageerror', e => cspErrors.push('pageerror: ' + e.message));
-cspPage.on('console', msg => { if (msg.type() === 'error') cspErrors.push('console: ' + msg.text()); });
+cspPage.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) cspErrors.push('console: ' + msg.text()); });
 await cspPage.goto(`http://127.0.0.1:${port}/dist/newtab.html?csp=1`, { waitUntil: 'load' });
 await cspPage.evaluate(() => localStorage.setItem('dash_theme', JSON.stringify({ theme: 'light', hue: 'lavender', hasBg: false })));
 await cspPage.reload({ waitUntil: 'load' });

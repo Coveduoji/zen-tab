@@ -25,6 +25,16 @@ function setCardDragged(item, val) {
   if (card) card._wasDragged = val;
 }
 
+// Edit mode is for moving/resizing/deleting only. inert on the card content
+// disables links, buttons, inputs, iframes and keyboard focus in one go.
+function setWidgetInert(card, inert) {
+  if (!card) return;
+  for (const el of card.querySelectorAll('.w-body, .w-header')) {
+    if (inert) el.setAttribute('inert', '');
+    else el.removeAttribute('inert');
+  }
+}
+
 function makeWidget(wdata) {
   const def = REG[wdata.type];
   if (!def) return null;
@@ -153,6 +163,7 @@ function makeWidget(wdata) {
         (Math.abs(e.clientX-wlpX) + Math.abs(e.clientY-wlpY) > 5)) stopWLP();
   });
   el._unbindLongPress = stopWLP;
+  if (editMode) setWidgetInert(el, true);
 
   return item;
 }
@@ -296,6 +307,49 @@ function addWidget(wdata) {
   captureLayout();
   saveState();
   updateEmptyHint();
+}
+
+// Batch-create link widgets (used by Settings → batch add quick links).
+function addWidgets(configs) {
+  if (!Array.isArray(configs) || !configs.length) return 0;
+  if (!grid) initGrid();
+  const vc = gridCols || readGeom().vc;
+  const canvas = document.getElementById('grid-canvas');
+  const rules = SIZE_RULES.link || { minW:1, maxW:2, minH:1, maxH:2 };
+  const created = [];
+
+  for (const cfg of configs) {
+    const wdata = {
+      id: genId('link'), type: 'link', w: rules.defW || 1, h: rules.defH || 1,
+      config: { name: cfg.name, url: cfg.url },
+    };
+    clampSize(wdata, vc);
+    state.widgets.push(wdata);
+    const item = makeWidget(wdata);
+    if (!item) continue;
+    canvas.appendChild(item);
+    created.push({ item, wdata });
+  }
+  if (!created.length) return 0;
+
+  _gridSyncing = true;
+  grid.batchUpdate();
+  for (const { item, wdata } of created) {
+    grid.makeWidget(item, {
+      id: wdata.id,
+      w: Math.min(wdata.w, vc),
+      h: wdata.h,
+      autoPosition: true,
+      minW: rules.minW, maxW: rules.maxW, minH: rules.minH, maxH: rules.maxH,
+    });
+  }
+  grid.batchUpdate(false);
+  grid.compact();
+  _gridSyncing = false;
+  captureLayout();
+  saveState();
+  updateEmptyHint();
+  return created.length;
 }
 
 function removeWidget(id) {
