@@ -258,13 +258,30 @@ console.log('after resize', {
 // Reload and confirm persistence
 await page.reload({ waitUntil: 'load' });
 await page.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
-console.log('after reload', await page.evaluate(() => ({
-  widgets: document.querySelectorAll('#grid-canvas .widget').length,
-  theme: document.documentElement.getAttribute('data-theme'),
-  note: document.querySelector('.notes-ta')?.value || null,
-  clockNode: (() => { const el = document.querySelector('#grid-canvas > .grid-stack-item[data-type="clock"]'); return el ? JSON.stringify({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h }) : null; })(),
-  renderErrors: [...document.querySelectorAll('#grid-canvas .widget')].filter(el => el.textContent.includes('Render error')).length,
-})));
+await page.waitForTimeout(450);
+console.log('after reload', await page.evaluate(() => {
+  const els = [...document.querySelectorAll('#grid-canvas .widget')];
+  const rects = els.map(el => ({ type: el.dataset.type, r: el.getBoundingClientRect() }));
+  const overlaps = [];
+  for (let i = 0; i < rects.length; i++) {
+    for (let j = i + 1; j < rects.length; j++) {
+      const a = rects[i].r, b = rects[j].r;
+      if (a.left < b.right - 1 && b.left < a.right - 1 &&
+          a.top < b.bottom - 1 && b.top < a.bottom - 1) {
+        overlaps.push([rects[i].type, rects[j].type]);
+      }
+    }
+  }
+  const clock = document.querySelector('#grid-canvas > .grid-stack-item[data-type="clock"]');
+  return {
+    widgets: els.length,
+    theme: document.documentElement.getAttribute('data-theme'),
+    note: document.querySelector('.notes-ta')?.value || null,
+    clockNode: clock ? JSON.stringify({ x: clock.gridstackNode?.x, y: clock.gridstackNode?.y, w: clock.gridstackNode?.w, h: clock.gridstackNode?.h }) : null,
+    renderErrors: els.filter(el => el.textContent.includes('Render error')).length,
+    overlaps,
+  };
+}));
 
 // Edit-mode delete button: visible in edit mode, opens confirm, removes.
 await page.keyboard.press('Control+e');

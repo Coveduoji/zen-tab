@@ -181,8 +181,9 @@ function initGrid() {
   grid.on('dragstart', (_e, el) => setCardDragged(el, true));
   grid.on('dragstop', (_e, el) => {
     setTimeout(() => setCardDragged(el, false), 300);
-    // Do not call compact('compact') here: it re-sorts empty slots and can
-    // undo the drop. GridStack's 'top' mode already lifts items upward.
+    // Only compact if the drop actually produced overlapping nodes. A valid
+    // drop is left where the user put it.
+    resolveOverlap();
     scheduleCapture();
   });
   grid.on('resizestop', (_e, el) => {
@@ -199,6 +200,7 @@ function initGrid() {
         _gridSyncing = false;
       }
     }
+    resolveOverlap();
     scheduleCapture();
   });
   grid.on('added', () => { scheduleCapture(); updateEmptyHint(); });
@@ -235,6 +237,31 @@ function captureLayout() {
   updateEmptyHint();
 }
 
+function layoutHasOverlap() {
+  if (!grid) return false;
+  const nodes = grid.save(false);
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      if (a.x < b.x + b.w && b.x < a.x + a.w &&
+          a.y < b.y + b.h && b.y < a.y + a.h) return true;
+    }
+  }
+  return false;
+}
+
+// GridStack can persist/load overlapping nodes after a resize (trial bug).
+// Repair only when needed; a valid layout is left untouched so per-column
+// restore stays exact.
+function resolveOverlap() {
+  if (!grid || !layoutHasOverlap()) return false;
+  const prev = _gridSyncing;
+  _gridSyncing = true;
+  grid.compact();
+  _gridSyncing = prev;
+  return true;
+}
+
 function applyLayout(map) {
   if (!grid || !map) return;
   const items = Object.entries(map).map(([id, pos]) => ({
@@ -242,6 +269,7 @@ function applyLayout(map) {
   }));
   // Atomic load (no add/remove) preserves the saved column layout exactly.
   grid.load(items, false);
+  resolveOverlap();
 }
 
 function addWidget(wdata) {
@@ -327,9 +355,10 @@ function renderAll() {
   });
 
   // A saved layout is already the user's compacted result; compacting again
-  // on load can move items and break exact viewport-restore. Only compact
-  // when there is no saved layout for this column count.
+  // on load can move items and break exact viewport-restore. Only repair it
+  // if an older saved layout contains overlapping nodes.
   if (!saved) grid.compact();
+  else resolveOverlap();
   _gridSyncing = false;
   captureLayout();
   updateEmptyHint();
