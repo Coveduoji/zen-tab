@@ -65,6 +65,14 @@ const base = await page.evaluate(() => ({
   normalInertBodies: document.querySelectorAll('.w-body[inert]').length,
 }));
 console.log('base', base);
+await page.focus('#search-input');
+await page.waitForTimeout(250);
+console.log('search focus', await page.evaluate(() => {
+  const el = document.getElementById('search-inner');
+  const s = getComputedStyle(el);
+  return { theme: document.documentElement.getAttribute('data-theme'), color: s.color, border: s.borderColor, shadow: s.boxShadow };
+}));
+await page.evaluate(() => document.getElementById('search-input').blur());
 
 // Link keyboard activation (the anchor is queried inside the detached body).
 await page.evaluate(() => { window.__opened = []; window.open = (...args) => { window.__opened.push(args[0]); }; });
