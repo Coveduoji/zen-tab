@@ -1,6 +1,6 @@
 # Zen Tab
 
-一个简洁、可高度自定义的浏览器新标签页仪表盘。纯原生 JS + CSS 实现，运行时仅使用 GridStack（vendored），使用 esbuild 打包压缩，以 Chrome 扩展（Manifest V3）形式运行。
+一个简洁、可高度自定义的浏览器新标签页仪表盘。纯原生 JS + CSS 实现，运行时仅使用 GridStack + idb-keyval（本地 vendored），使用 esbuild 打包压缩，以 Chrome 扩展（Manifest V3）形式运行。
 
 ![Zen Tab 仪表盘](screenshots/hero.png)
 
@@ -153,12 +153,13 @@ zen-tab/
 
 ## 数据存储
 
-所有数据存储在浏览器 `localStorage` 中：
+主状态存储在浏览器 `localStorage`；背景原图单独存 IndexedDB，避开 localStorage 配额：
 
 | Key | 内容 |
 |---|---|
 | `dash_v3` | 主状态（组件顺序/尺寸 + 设置），大图片替换为占位符；`orderOnly: true` 为兼容标记 |
-| `dash_bg_img` | 背景图片 base64（单独存储，原图质量不压缩） |
+| `dash_bg_img` | 旧版背景 base64；启动时迁移到 IndexedDB 后删除 |
+| `zen_bg`（IndexedDB） | 背景原图 data URL（原图质量不压缩，容量远大于 localStorage） |
 | `dash_limg_<id>` | 链接组件自定义图标 base64（上传时自动压缩到 400px 以内） |
 | `gridLayouts` | 各可见列数（GridStack column）对应的布局：组件 id → x/y/w/h |
 | `dash_theme` | 首帧主题提示（theme / hue），几十字节，可由 `dash_v3` 重建 |
@@ -168,11 +169,11 @@ zen-tab/
 
 存储版本号为 `3`，数据结构变更时会自动迁移而不丢失用户数据；容量超限时会给出提示并做降级保存，不会导致数据完全丢失。
 
-`saveState()` 现在只在图片/图标**实际变化**时写入对应的 `dash_bg_img` / `dash_limg_*`，并用浅拷贝代替整状态 `structuredClone`；拖拽排序、便签输入、主题切换不再重写多 MB 数据。
+`saveState()` 只在自定义图标**实际变化**时写入 `dash_limg_*`，并用浅拷贝代替整状态 `structuredClone`；背景图由 IndexedDB 单独保存，`dash_v3` 只留占位符，大图不会再撞 localStorage 配额。
 
 从旧的自由布局升级时，会先按原来的 `(y, x)` 视觉顺序排序一次；GridStack 首次启动会 compact，并按当前列数写入 `gridLayouts`。组件数组顺序和尺寸仍保存在 `dash_v3`，具体位置按列保存在 `gridLayouts`。
 
-> 图片仍保存在 localStorage（基准测试显示增量保存已足够快，迁移 IndexedDB 会引入首帧异步闪变）；背景保持原图质量。
+> 背景图保存在 IndexedDB（原图质量不压缩），首帧先显示主题背景，图片异步加载后应用；自定义小图标仍在 localStorage。
 
 ---
 
@@ -191,13 +192,13 @@ zen-tab/
 
 **说明**：GridStack 提供自由网格摆放、拖拽/缩放和按列布局缓存，但启动与拖拽开销明显高于自研稠密瀑布。如果性能是第一位，使用 `checkpoint/dense-masonry` 分支；本分支选择 GridStack 的自由布局能力，并接受这部分性能代价。
 
-主要手段：主题切换使用 View Transition 旧/新快照圆形揭示（新颜色取代旧颜色，1200ms 先慢后快）；大背景图延后一帧应用；storage 增量写入；移除常驻 `will-change` 与默认背景上不可见的组件模糊；GridStack 按列缓存布局并在加载/缩放后检测重叠；共享 ticker / 网络请求去重；esbuild bundle + vendored GridStack。
+主要手段：主题切换使用 View Transition 旧/新快照圆形揭示（新颜色取代旧颜色，1200ms 先慢后快）；大背景图由 IndexedDB 异步加载；storage 增量写入；移除常驻 `will-change` 与默认背景上不可见的组件模糊；GridStack 按列缓存布局并在加载/缩放后检测重叠；共享 ticker / 网络请求去重；esbuild bundle + vendored GridStack。
 
 ---
 
 ## 技术说明
 
-- 纯原生 JS + CSS；运行时仅 GridStack（本地 vendored）；esbuild 负责合并/压缩，输出 `dist/`
+- 纯原生 JS + CSS；运行时仅 GridStack + idb-keyval（本地 vendored）；esbuild 负责合并/压缩，输出 `dist/`
 - 布局引擎：GridStack v14，`mode: 'top'` + `compact()`；每个可见列数在 `gridLayouts` 中缓存独立布局，窗口缩小再恢复会回到相同位置
 - 重叠保护：加载/缩放/拖拽后检测节点是否相交；只有发现重叠才 `compact()` 修复，正常布局保持用户落点不动
 - 拖拽：普通模式即可拖拽；`draggable.cancel` 排除输入框、按钮、链接、任务项和缩放手柄
@@ -212,7 +213,7 @@ zen-tab/
 ### 开发命令
 
 ```bash
-npm run build       # 构建 dist/（JS/CSS 压缩 + 复制 theme-init/图标/GridStack vendor）
+npm run build       # 构建 dist/（JS/CSS 压缩 + 复制 theme-init/图标/GridStack/idb-keyval vendor）
 npm run watch       # 监听源码并增量构建
 npm test            # node:test 单元测试（工具函数 + 布局几何）
 npm run smoke       # headless Chrome 功能冒烟 + 实际 CSP 策略验证

@@ -29,6 +29,8 @@ document.addEventListener('visibilitychange', () => {
   const deferBootImage = bootBg?.type === 'image' && (bootBg.value || '').length > 100000;
   applyBackgroundNow({ deferImage: deferBootImage });
   if (state.settings.background?.palette) applyBgPalette(state.settings.background.palette);
+  // Large backgrounds live in IndexedDB; apply them once loaded.
+  loadStoredBackground();
 
   // 3. Layout is derived from widget order; no position normalization.
   //    Persist the first run or a one-time visual-order migration.

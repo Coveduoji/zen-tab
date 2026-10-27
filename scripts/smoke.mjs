@@ -367,6 +367,46 @@ console.log('order migration', await migPage.evaluate(() => {
 }));
 await migCtx.close();
 
+// Large background upload: it must survive a refresh even when the data URL
+// is near/over the localStorage quota.
+const bgCtx = await browser.newContext();
+const bgPage = await bgCtx.newPage();
+await bgPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+await bgPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+const bgBlobSize = await bgPage.evaluate(async () => {
+  const c = document.createElement('canvas');
+  c.width = 5200; c.height = 4000;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 5200, 4000);
+  g.addColorStop(0, '#102030'); g.addColorStop(1, '#a04020');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 5200, 4000);
+  for (let i = 0; i < 90000; i++) {
+    ctx.fillStyle = `hsla(${(i * 53) % 360},80%,60%,.45)`;
+    ctx.fillRect((i * 733) % 5200, (i * 977) % 4000, 16, 16);
+  }
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95));
+  const file = new File([blob], 'bg.jpg', { type: 'image/jpeg' });
+  const dt = new DataTransfer(); dt.items.add(file);
+  const input = document.getElementById('bg-file-input');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return blob.size;
+});
+await bgPage.waitForTimeout(1500);
+const bgNow = await bgPage.evaluate(() => ({
+  storedBg: (localStorage.getItem('dash_bg_img') || '').length,
+  dash: (localStorage.getItem('dash_v3') || '').length,
+  layer: (document.getElementById('bg-layer').style.backgroundImage || '').length,
+}));
+await bgPage.reload({ waitUntil: 'load' });
+await bgPage.waitForTimeout(700);
+const bgAfter = await bgPage.evaluate(() => ({
+  storedBg: (localStorage.getItem('dash_bg_img') || '').length,
+  layer: (document.getElementById('bg-layer').style.backgroundImage || '').length,
+}));
+console.log('background persistence', { blobBytes: bgBlobSize, now: bgNow, afterReload: bgAfter });
+await bgCtx.close();
+
 console.log('errors', errors.length ? errors : 'none');
 await browser.close();
 server.close();

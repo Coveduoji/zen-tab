@@ -125,7 +125,7 @@ function _applyBackgroundNow({ deferImage = false } = {}) {
   const ovEl  = document.getElementById('bg-overlay');
   if (!layer || !ovEl) return;
 
-  const hasImg   = bg.type === 'image' && !!bg.value;
+  const hasImg   = bg.type === 'image' && !!bg.value && bg.value !== '__dash_bg_img__';
   const hasColor = bg.type === 'color' && !!bg.value;
   const hasCustom = hasImg || hasColor;
   const blurPx   = parseFloat(bg.blur) || 0;
@@ -202,18 +202,79 @@ function applyBackgroundNow(opts) {
   _applyBackgroundNow(opts);
 }
 
+// Background binaries are kept in IndexedDB; localStorage only stores the
+// placeholder in dash_v3. This is what lets large photos survive a refresh.
+const BG_IDB_KEY = 'zen_bg';
+
+async function _storeBackground(value) {
+  if (typeof idbKeyval !== 'undefined') {
+    await idbKeyval.set(BG_IDB_KEY, value);
+    try { localStorage.removeItem('dash_bg_img'); } catch (_) {}
+  } else {
+    // Fallback for the (unexpected) case the idb-keyval vendor did not load.
+    localStorage.setItem('dash_bg_img', value);
+  }
+}
+
+async function _deleteStoredBackground() {
+  try {
+    if (typeof idbKeyval !== 'undefined') await idbKeyval.del(BG_IDB_KEY);
+  } catch (_) {}
+  try { localStorage.removeItem('dash_bg_img'); } catch (_) {}
+}
+
+async function loadStoredBackground() {
+  const bg = state.settings.background;
+  if (!bg || bg.type !== 'image') return;
+
+  const pending = !bg.value || bg.value === '__dash_bg_img__';
+  if (!pending) {
+    // Legacy install: image was loaded synchronously from localStorage.
+    // Move it to IndexedDB and drop the quota-heavy local key.
+    if (bg.value.startsWith('data:')) {
+      try { await _storeBackground(bg.value); } catch (_) {}
+    }
+    return;
+  }
+
+  try {
+    const value = (typeof idbKeyval !== 'undefined')
+      ? await idbKeyval.get(BG_IDB_KEY)
+      : localStorage.getItem('dash_bg_img');
+    if (state.settings.background.type !== 'image') return; // removed while loading
+    if (value) {
+      bg.value = value;
+      applyBackgroundNow();
+      if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
+    } else {
+      bg.type = 'default'; bg.value = ''; delete bg.palette;
+      applyBgPalette(null); applyBackgroundNow();
+      if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
+    }
+  } catch (_) {}
+}
+
+async function clearStoredBackground() {
+  await _deleteStoredBackground();
+}
+
 function _loadBgFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
-  reader.onload = ev => {
+  reader.onload = async ev => {
     if (!state.settings.background) state.settings.background = { ...BG_DEFAULTS };
     const bg = state.settings.background;
     bg.type = 'image'; bg.value = ev.target.result;
     if (bg.brightness === undefined) bg.brightness = 1;
     delete bg.palette; applyBgPalette(null);
+
+    let stored = true;
+    try { await _storeBackground(bg.value); } catch (_) { stored = false; }
     saveState(); applyBackgroundNow();
     if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
-    toast(lang==='zh' ? '背景已更新，可点击「从背景取色」提取配色' : 'Background updated — tap "Sample Colors" to extract palette', 'ok');
+    toast(stored
+      ? (lang==='zh' ? '背景已更新，可点击「从背景取色」提取配色' : 'Background updated — tap "Sample Colors" to extract palette')
+      : (lang==='zh' ? '⚠ 背景保存失败' : '⚠ Could not save background'), stored ? 'ok' : 'err');
   };
   reader.readAsDataURL(file);
 }

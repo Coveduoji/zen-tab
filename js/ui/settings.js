@@ -210,7 +210,7 @@ function renderSettings() {
   body.querySelector('#s-bg-remove')?.addEventListener('click',e=>{
     e.stopPropagation();if(!state.settings.background)return;
     state.settings.background.type='default';state.settings.background.value='';delete state.settings.background.palette;
-    applyBgPalette(null);saveState();applyBackgroundNow();renderSettings();
+    applyBgPalette(null);saveState();applyBackgroundNow();renderSettings();clearStoredBackground();
     toast(zh?'背景已移除':'Background removed','ok');
   });
   if (bgc) {

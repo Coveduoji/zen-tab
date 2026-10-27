@@ -60,6 +60,7 @@ async function build() {
   const gridstackDist = path.join(root, 'node_modules', 'gridstack', 'dist');
   await cp(path.join(gridstackDist, 'gridstack-all.js'), path.join(dist, 'vendor', 'gridstack-all.js'));
   await cp(path.join(gridstackDist, 'gridstack.min.css'), path.join(dist, 'vendor', 'gridstack.min.css'));
+  await cp(path.join(root, 'node_modules', 'idb-keyval', 'dist', 'umd.js'), path.join(dist, 'vendor', 'idb-keyval.umd.js'));
 
   await writeFile(path.join(dist, 'js', 'app.js'), js.code);
   await writeFile(path.join(dist, 'js', 'theme-init.js'), await readFile(path.join(root, 'js', 'theme-init.js'), 'utf8'));

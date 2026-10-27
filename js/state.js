@@ -9,10 +9,9 @@ const DEF_SETTINGS = {
 };
 
 // ── Persisted binary asset bookkeeping ────────────────────
-// dash_bg_img / dash_limg_<id> hold multi-MB data URLs. They used to be
-// rewritten on every save (drag end, note keystroke, slider tick, theme
-// switch); remember what is already on disk so only real changes are written.
-let _savedBg = null;                 // last value written to dash_bg_img
+// Large background data lives in IndexedDB; dash_limg_<id> still holds
+// small custom icons in localStorage. Remember written icon values so only
+// real changes are written.
 const _savedImgs = new Map();        // widget id -> last custom icon data URL
 let _lastStateJson = null;           // skip identical dash_v3 writes
 let _lastThemeHint = null;           // tiny first-paint hint (dash_theme)
@@ -45,9 +44,11 @@ function loadState() {
 
     // Restore bg image from separate key if needed
     if (s?.settings?.background?.value === '__dash_bg_img__') {
+      // Legacy stores may still have the image in localStorage; use it now and
+      // let loadStoredBackground() migrate it into IndexedDB. If it is not
+      // there, keep the placeholder and load the IndexedDB blob asynchronously.
       const img = localStorage.getItem('dash_bg_img');
-      if (img) { s.settings.background.value = img; _savedBg = img; }
-      else { s.settings.background.type = 'default'; s.settings.background.value = ''; }
+      if (img) s.settings.background.value = img;
     }
     // Restore link widget custom images from separate keys
     s?.widgets?.forEach(w => {
@@ -111,19 +112,15 @@ function saveState() {
   const bg = state.settings.background || { ...DEF_SETTINGS.background };
   const bgValue = bg.value || '';
   const isBgImg = bg.type === 'image' && bgValue.startsWith('data:');
+  const isBgPlaceholder = bg.type === 'image' && bgValue === '__dash_bg_img__';
   try {
     const slim = _slimState();
 
-    // Background: write only when the data URL actually changed.
-    if (isBgImg) {
-      if (_savedBg !== bgValue) {
-        localStorage.setItem('dash_bg_img', bgValue);
-        _savedBg = bgValue;
-      }
+    // Background binaries live in IndexedDB (loadStoredBackground/_loadBgFile
+    // manage them); dash_v3 only keeps the placeholder. This avoids the
+    // localStorage quota that made large backgrounds revert on refresh.
+    if (isBgImg || isBgPlaceholder) {
       slim.settings.background.value = '__dash_bg_img__';
-    } else if (_savedBg !== null) {
-      localStorage.removeItem('dash_bg_img');
-      _savedBg = null;
     }
 
     // Custom icons: write only changed ids, and clean up removed widgets.
