@@ -10,11 +10,12 @@ const MONET_HUES = [
 ];
 
 // ── Theme switching ──────────────────────────────────────
-// The theme is committed synchronously and a purely decorative, pointer-events
-// none splash plays on top. The old View Transition approach snapshotted the
-// whole page and blocked interaction for up to 2.4s — exactly the "wait for the
-// animation" feeling we want to remove.
-let _rippleTimer = 0;
+// View Transitions gives us the old page snapshot underneath and the new theme
+// snapshot on top; a circular clip-path expands from the click point, so the
+// real new colours replace the old ones (not a coloured overlay). 1200ms with
+// an ease-in curve = slow start, then accelerate.
+let _currentTransition = null;
+let _rippleBusy = false;
 
 function _commitTheme(th, hue) {
   const root = document.documentElement;
@@ -23,39 +24,69 @@ function _commitTheme(th, hue) {
   else root.removeAttribute('data-monet-hue');
 }
 
-function _playThemeRipple(fromEl) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const el = document.getElementById('theme-ripple');
-  if (!el) return;
-  const r = fromEl ? fromEl.getBoundingClientRect() : null;
-  const x = r ? r.left + r.width / 2 : window.innerWidth / 2;
-  const y = r ? r.top + r.height / 2 : window.innerHeight / 2;
-  el.style.setProperty('--ripple-x', Math.round(x) + 'px');
-  el.style.setProperty('--ripple-y', Math.round(y) + 'px');
-  el.classList.remove('run');
-  void el.offsetWidth; // restart the CSS animation
-  el.classList.add('run');
-  clearTimeout(_rippleTimer);
-  _rippleTimer = setTimeout(() => el.classList.remove('run'), 1350);
+function _runRippleTransition(fromEl, commitFn) {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!document.startViewTransition || document.hidden || reduced) {
+    commitFn();
+    return;
+  }
+
+  if (_currentTransition) {
+    try { _currentTransition.skipTransition(); } catch (_) {}
+    _currentTransition = null;
+  }
+
+  const root = document.documentElement;
+  if (fromEl) {
+    const r = fromEl.getBoundingClientRect();
+    root.style.setProperty('--vt-ox', Math.round(r.left + r.width / 2) + 'px');
+    root.style.setProperty('--vt-oy', Math.round(r.top + r.height / 2) + 'px');
+  } else {
+    root.style.setProperty('--vt-ox', window.innerWidth + 'px');
+    root.style.setProperty('--vt-oy', '0px');
+  }
+
+  let transition;
+  try {
+    transition = document.startViewTransition(() => { commitFn(); });
+  } catch (_) {
+    commitFn();
+    return;
+  }
+  _currentTransition = transition;
+  _rippleBusy = true;
+
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    if (_currentTransition !== transition) return;
+    root.style.removeProperty('--vt-ox');
+    root.style.removeProperty('--vt-oy');
+    _currentTransition = null;
+    _rippleBusy = false;
+  };
+  transition.finished.then(finish, finish);
+  // Animation is 1200ms; fallback only if the promise never settles.
+  setTimeout(finish, 1600);
 }
 
-function _afterThemeChange() {
+function _commitThemeChange(th, hue, { persist, unchanged }) {
+  _commitTheme(th, hue);
+  state.settings.theme = th;
+  if (persist && !unchanged) saveState();
   applyBackgroundNow();
-  // Update the settings panel immediately; the old code waited for the View
-  // Transition to finish, which made the panel feel frozen.
   if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
 }
 
 function applyTheme(th, fromEl, { animate = true, persist = true } = {}) {
   const hue = state.settings.monetHue || 'lavender';
   const unchanged = state.settings.theme === th;
-  _commitTheme(th, hue);
-  state.settings.theme = th;
-  if (persist && !unchanged) saveState();
-  // Ripple before renderSettings(): rebuilding the panel detaches fromEl, and
-  // a detached element has no rect (the splash would start at 0,0).
-  if (animate && !unchanged) _playThemeRipple(fromEl);
-  _afterThemeChange();
+  if (!animate || unchanged || document.hidden) {
+    _commitThemeChange(th, hue, { persist, unchanged });
+    return;
+  }
+  _runRippleTransition(fromEl, () => _commitThemeChange(th, hue, { persist, unchanged }));
 }
 
 function applyMonetHue(hueId, fromEl) {
@@ -63,10 +94,17 @@ function applyMonetHue(hueId, fromEl) {
   state.settings.monetHue = hueId;
   if (state.settings.theme !== 'monet') state.settings.theme = 'monet';
   if (unchanged) return;
-  _commitTheme('monet', hueId);
-  saveState();
-  _playThemeRipple(fromEl);
-  _afterThemeChange();
+  const commit = () => {
+    _commitTheme('monet', hueId);
+    saveState();
+    applyBackgroundNow();
+    if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
+  };
+  if (!document.startViewTransition || document.hidden) {
+    commit();
+    return;
+  }
+  _runRippleTransition(fromEl, commit);
 }
 
 
@@ -258,9 +296,12 @@ async function triggerBgPaletteExtraction(fromBtn) {
   if(!bg||bg.type!=='image'||!bg.value){toast(lang==='zh'?'请先上传背景图片':'Upload a background image first','err');return;}
   if(fromBtn){fromBtn.disabled=true;fromBtn.textContent=lang==='zh'?'取色中…':'Sampling…';}
   try{
-    const palette=await extractPaletteFromDataUrl(bg.value);bg.palette=palette;saveState();applyBgPalette(palette);
-    if(fromBtn) _playThemeRipple(fromBtn);
-    if(document.getElementById('settings-bg')?.classList.contains('open'))renderSettings();
+    const palette=await extractPaletteFromDataUrl(bg.value);bg.palette=palette;saveState();
+    const apply = () => {
+      applyBgPalette(palette);
+      if(document.getElementById('settings-bg')?.classList.contains('open'))renderSettings();
+    };
+    if(fromBtn) _runRippleTransition(fromBtn, apply); else apply();
   }catch(e){toast(lang==='zh'?'取色失败，请重试':'Extraction failed, try again','err');}
   finally{if(fromBtn){fromBtn.disabled=false;fromBtn.textContent=lang==='zh'?'🎨 从背景取色':'🎨 Sample Colors';}}
 }

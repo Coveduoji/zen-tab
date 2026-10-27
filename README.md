@@ -28,7 +28,7 @@
 ### 🎨 主题与个性化
 
 - **三套主题**：深色 / 浅色 / 莫奈（莫奈主题含薰衣草、玫瑰、海洋、丛林、陶土、沙丘 6 种色调）
-- 主题切换即时生效，附带明显的全屏涟漪动画；涟漪不阻塞点击/拖拽
+- 主题切换使用 View Transition 圆形揭示：新主题快照从点击位置扩散、取代旧主题；1200ms 先慢后快
 - **自定义背景**：上传任意图片作为背景，支持模糊、遮罩透明度、亮度调节
 - **背景取色**：一键从背景图提取主色调（Canvas + K-means 聚类），自动生成匹配的强调色、文字色与卡片配色，让界面跟着背景图走
 
@@ -191,7 +191,7 @@ zen-tab/
 
 **说明**：GridStack 提供自由网格摆放、拖拽/缩放和按列布局缓存，但启动与拖拽开销明显高于自研稠密瀑布。如果性能是第一位，使用 `checkpoint/dense-masonry` 分支；本分支选择 GridStack 的自由布局能力，并接受这部分性能代价。
 
-主要手段：移除了阻塞交互的全屏 View Transition（主题切换即时生效，只剩 pointer-events:none 的装饰涟漪）；大背景图延后一帧应用；storage 增量写入；移除常驻 `will-change` 与默认背景上不可见的组件模糊；GridStack 按列缓存布局并在加载/缩放后检测重叠；共享 ticker / 网络请求去重；esbuild bundle + vendored GridStack。
+主要手段：主题切换使用 View Transition 旧/新快照圆形揭示（新颜色取代旧颜色，1200ms 先慢后快）；大背景图延后一帧应用；storage 增量写入；移除常驻 `will-change` 与默认背景上不可见的组件模糊；GridStack 按列缓存布局并在加载/缩放后检测重叠；共享 ticker / 网络请求去重；esbuild bundle + vendored GridStack。
 
 ---
 
@@ -204,7 +204,7 @@ zen-tab/
 - 缩放/删除：缩放手柄只在编辑模式启用，缩放后重新应用图标类组件的宽高比；删除按钮也只在编辑模式显示
 - 组件级模糊在 GridStack 拖拽/缩放期间暂停，减少逐帧重算
 - 用 `ResizeObserver` 监听画布容器尺寸变化（而非仅监听 `window.resize`），页面缩放、窗口拖动都能正确响应
-- 主题切换即时生效；涟漪只是 `pointer-events:none` 的装饰动画，不会像 View Transition 那样阻塞点击和拖拽
+- 主题切换使用 View Transition 的旧/新页面快照，新主题从点击位置圆形揭示并取代旧主题；过渡期间页面为快照，交互会短暂等待（1200ms）
 - 背景取色使用 Canvas + K-means 聚类算法（k=6）提取主色调，自动适配深浅色文字对比度
 - 遵循 Manifest V3 CSP：脚本全部本地加载；首帧主题提示使用独立的本地 `js/theme-init.js`（内联脚本与 CSP 哈希都会被 MV3 拒绝）
 - `prefers-reduced-motion` 下关闭涟漪、抖动和入场动画

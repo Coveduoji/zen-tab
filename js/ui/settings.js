@@ -269,7 +269,7 @@ function renderSettings() {
     confirm2(t('reset_confirm'),t('reset_sub'),t('reset_btn'),ok=>{
       if(!ok)return;
       state.widgets=DEF_WIDGETS.map(w=>({...w,config:{...w.config}}));state.settings={...DEF_SETTINGS,lang,background:{...DEF_SETTINGS.background}};
-      saveState();applyTheme(state.settings.theme,null);renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
+      saveState();applyTheme(state.settings.theme,null,{animate:false});renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
     });
   });
 

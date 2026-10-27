@@ -170,19 +170,19 @@ const reorder = await page.evaluate(() => {
 });
 console.log('reorder', { clockBefore, clockAfter: await clock.evaluate(el => ({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h })), visualOrder: reorder });
 
-// Theme cycle: the switch is synchronous; the ripple must not block input.
+// Theme cycle via View Transition: the new theme snapshot replaces the old.
 const before = await page.getAttribute('html', 'data-theme');
 await page.keyboard.press('Control+m');
-const instant = await page.getAttribute('html', 'data-theme');
+await page.waitForTimeout(60);
+const switched = await page.getAttribute('html', 'data-theme');
 await page.keyboard.press('Control+k');
-console.log('theme instant', before, '->', instant,
-  'cmd during ripple', await page.locator('#cmd-overlay.open').count(),
-  'ripple', await page.evaluate(() => {
-    const r = document.getElementById('theme-ripple');
-    return { run: r.classList.contains('run'), pointerEvents: getComputedStyle(r).pointerEvents };
-  }));
+console.log('theme transition', {
+  before, switched,
+  cmdDuringTransition: await page.locator('#cmd-overlay.open').count(),
+  vtOrigin: await page.evaluate(() => document.documentElement.style.getPropertyValue('--vt-ox') || ''),
+});
 await page.keyboard.press('Escape');
-await page.waitForTimeout(500);
+await page.waitForTimeout(1300);
 const after = await page.getAttribute('html', 'data-theme');
 console.log('theme final', after);
 
