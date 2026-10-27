@@ -19,73 +19,83 @@ function exitEditMode() {
   document.body.classList.remove('edit-mode');
   document.getElementById('header').classList.remove('edit-mode-active');
   document.getElementById('edit-bar').classList.remove('visible');
-  document.getElementById('grid-bg').classList.remove('visible');
+  const bg = document.getElementById('grid-bg');
+  bg.classList.remove('visible');
+  // Free the hundreds of cell nodes; they are only needed while editing.
+  bg.innerHTML = '';
+  _gridBgCols = 0; _gridBgRows = 0;
 }
 
 // ── Grid background ───────────────────────────────────────
 // Sized to the *visible* column count — drawing the full 20-column model
 // width regardless of viewport would show empty cells past where a widget
-// could ever actually be dropped (see tidyLayout's history for why the
-// model width and the visible width must not be conflated).
+// could ever actually be dropped.
 let _gridBgCols = 0, _gridBgRows = 0;
 function buildGridBg() {
+  if (!editMode) return;
   const el   = document.getElementById('grid-bg');
-  const cols = visibleCols();
-  const rows = Math.max(14, Math.ceil(document.getElementById('grid-canvas').offsetHeight / (rowH()+GAP)));
-  if (_gridBgCols === cols && _gridBgRows === rows) {
-    el.style.gridTemplateColumns = `repeat(${cols}, ${cw()}px)`;
-    el.style.gridTemplateRows    = `repeat(${rows}, ${rowH()}px)`;
-    return;
-  }
-  _gridBgCols = cols; _gridBgRows = rows;
-  el.innerHTML = '';
-  el.style.gridTemplateColumns = `repeat(${cols}, ${cw()}px)`;
-  el.style.gridTemplateRows    = `repeat(${rows}, ${rowH()}px)`;
+  const geom = readGeom();
+  const rows = Math.max(14, Math.ceil(document.getElementById('grid-canvas').offsetHeight / (geom.rowH + GAP)));
+  el.style.gridTemplateColumns = `repeat(${geom.vc}, ${geom.colW}px)`;
+  el.style.gridTemplateRows    = `repeat(${rows}, ${geom.rowH}px)`;
   el.style.gap = `${GAP}px`;
-  for (let i = 0; i < cols * rows; i++) {
-    const c = document.createElement('div'); c.className = 'grid-bg-cell'; el.appendChild(c);
+  if (_gridBgCols === geom.vc && _gridBgRows === rows) return;
+  _gridBgCols = geom.vc; _gridBgRows = rows;
+  el.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < geom.vc * rows; i++) {
+    const c = document.createElement('div'); c.className = 'grid-bg-cell'; frag.appendChild(c);
   }
+  el.appendChild(frag);
 }
 
 // ── Long-press on canvas to enter edit mode ───────────────
-const LP_DUR = 700;
-let lpTimer = null, lpX = 0, lpY = 0;
+// The ring only appears after a deliberate hold; a normal click on blank
+// space shows nothing at all.
+const LP_DELAY = 200;   // ms before the ring appears
+const LP_DUR   = 500;   // ms of visible progress after that
+let lpTimer = null, lpDelayTimer = null, lpActive = false, lpX = 0, lpY = 0;
 
 function startLongPress(e) {
-  if (editMode) return;
+  if (editMode || e.button !== 0) return;
   const el = e.target;
   if (el.closest('.widget') || el.closest('#edit-bar') || el.closest('#header')) return;
   lpX = e.clientX; lpY = e.clientY;
-  const ring = document.getElementById('lp-ring');
-  const fill = document.getElementById('lp-ring-fill');
-  const C = 69.1;
-  ring.style.left = lpX + 'px'; ring.style.top = lpY + 'px'; ring.style.display = 'block';
-  fill.style.strokeDashoffset = C;
-  let start = null;
-  function frame(ts) {
-    if (!start) start = ts;
-    const pct = Math.min(1, (ts-start)/LP_DUR);
-    fill.style.strokeDashoffset = C * (1-pct);
-    if (pct < 1 && lpTimer) lpTimer = requestAnimationFrame(frame);
-    else if (pct >= 1) { ring.style.display='none'; enterEditMode(); }
-  }
-  lpTimer = requestAnimationFrame(frame);
+  lpActive = true;
+  clearTimeout(lpDelayTimer);
+  lpDelayTimer = setTimeout(() => {
+    lpDelayTimer = null;
+    if (!lpActive || editMode) return;
+    const ring = document.getElementById('lp-ring');
+    const fill = document.getElementById('lp-ring-fill');
+    const C = 69.1;
+    ring.style.left = lpX + 'px'; ring.style.top = lpY + 'px'; ring.style.display = 'block';
+    fill.style.strokeDashoffset = C;
+    let start = null;
+    function frame(ts) {
+      if (!lpActive) return;
+      if (!start) start = ts;
+      const pct = Math.min(1, (ts-start)/LP_DUR);
+      fill.style.strokeDashoffset = C * (1-pct);
+      if (pct < 1) lpTimer = requestAnimationFrame(frame);
+      else { lpTimer = null; ring.style.display='none'; lpActive = false; enterEditMode(); }
+    }
+    lpTimer = requestAnimationFrame(frame);
+  }, LP_DELAY);
 }
 function cancelLongPress() {
+  lpActive = false;
+  clearTimeout(lpDelayTimer); lpDelayTimer = null;
   if (lpTimer) { cancelAnimationFrame(lpTimer); lpTimer = null; }
   document.getElementById('lp-ring').style.display = 'none';
 }
 
 function initEditMode() {
   document.getElementById('btn-done').addEventListener('click', exitEditMode);
-  document.getElementById('btn-tidy').addEventListener('click', () => {
-    tidyLayout(state.widgets); compact(state.widgets);
-    debouncedSaveState(); positionAll();
-    toast(t('layout_tidied'), 'ok');
-  });
-  document.getElementById('grid-canvas').addEventListener('mousedown', startLongPress);
-  document.addEventListener('mouseup',   cancelLongPress);
-  document.addEventListener('mousemove', e => {
-    if (lpTimer && (Math.abs(e.clientX-lpX)+Math.abs(e.clientY-lpY) > 8)) cancelLongPress();
+  document.getElementById('grid-canvas').addEventListener('pointerdown', startLongPress);
+  document.addEventListener('pointerup', cancelLongPress);
+  document.addEventListener('pointercancel', cancelLongPress);
+  document.addEventListener('pointermove', e => {
+    if ((lpDelayTimer || lpTimer) && (Math.abs(e.clientX-lpX)+Math.abs(e.clientY-lpY) > 8)) cancelLongPress();
   });
 }

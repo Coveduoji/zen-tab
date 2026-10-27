@@ -12,7 +12,12 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
     let mode     = 'work';             // work | break
     let rem      = WORK_S;
     let iv       = null;
+    let endAt    = 0;                  // wall-clock deadline while running
     let pomCustomSecs = WORK_S;       // FIX: tracks user-set duration for this instance
+
+    /* One cleanup owns whichever interval is current, so pause/resume does not
+       grow the widget timer registry. */
+    registerCleanup(id, () => { if (iv) { clearInterval(iv); iv = null; } });
 
     /* ── audio beep ── */
     function beep() {
@@ -25,6 +30,7 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
         osc.frequency.setValueAtTime(880, ac.currentTime);
         g.gain.setValueAtTime(0.35, ac.currentTime);
         g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.9);
+        osc.onended = () => ac.close();
         osc.start(); osc.stop(ac.currentTime + 0.9);
       } catch(_) {}
     }
@@ -89,9 +95,13 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
     }
 
     /* ── tick ── */
+    // Recompute from the wall-clock deadline instead of decrementing one
+    // second per callback: background-tab throttling no longer makes the
+    // pomodoro drift slow.
     function tick() {
-      rem = Math.max(0, rem - 1);
-      if (rem === 0) {
+      const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+      if (left !== rem) rem = left;
+      if (rem === 0 && phase === 'running') {
         phase = 'finished';
         clearInterval(iv); iv = null;
         beep();
@@ -115,12 +125,13 @@ reg({ type:'pomodoro', get name(){return t('w_pomodoro');}, get desc(){return t(
       e.stopPropagation();
       if (pomWidget && pomWidget._wasDragged) return;
       if (phase === 'running') {
+        rem = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
         phase = 'paused';
         clearInterval(iv); iv = null;
       } else {
         phase = 'running';
+        endAt = Date.now() + rem * 1000;
         iv = setInterval(tick, 1000);
-        registerTimer(id, iv);
       }
       paint();
     });

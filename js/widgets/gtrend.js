@@ -1,41 +1,65 @@
+/* GitHub trending is shared by every gtrend widget: one request, one cache
+   write. One widget being removed must not abort the others' request. */
+const TREND_PER_PAGE = 15;
+const _gtrendCache = makeLocalCache('gtrend_cache_v2', 10 * 60 * 1000);
+let _gtrendPromise = null;
+
+// Symbol-only languages need an explicit alias — stripping non-letters from
+// "C++"/"C#" would otherwise collapse both onto the "C" class.
+const TREND_LANG_ALIAS = { 'c++': 'cpp', 'c#': 'csharp', 'f#': 'fsharp' };
+function _trendLangClass(l) {
+  const key = (l || '').toLowerCase();
+  return 'lang-' + (TREND_LANG_ALIAS[key] || key.replace(/[^a-z0-9]/g, ''));
+}
+
+function _parseTrending(data) {
+  return (data.items || []).map(repo => ({
+    repoName: repo.full_name,
+    link:     repo.html_url,
+    stars:    repo.stargazers_count >= 1000
+                ? (repo.stargazers_count / 1000).toFixed(1) + 'k'
+                : String(repo.stargazers_count),
+    language: repo.language || '',
+    desc:     (repo.description || '').slice(0, 100),
+  }));
+}
+
+function _fetchTrendingData() {
+  if (_gtrendPromise) return _gtrendPromise;
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const dateStr = since.toISOString().slice(0, 10); // YYYY-MM-DD
+  const url = `https://api.github.com/search/repositories?q=created:>${dateStr}` +
+    `&sort=stars&order=desc&per_page=${TREND_PER_PAGE}`;
+
+  const p = fetch(url, {
+    // Do NOT send X-GitHub-Api-Version: it is not CORS-safelisted and forces
+    // an extra OPTIONS preflight on every request.
+    headers: { 'Accept': 'application/vnd.github+json' },
+    signal: (() => { try { return AbortSignal.timeout(8000); } catch (_) { return undefined; } })(),
+  })
+    .then(r => {
+      if (r.status === 403) throw new Error('rate_limit');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(data => {
+      const items = _parseTrending(data);
+      if (!items.length) throw new Error('empty');
+      _gtrendCache.save(items);
+      return items;
+    });
+
+  _gtrendPromise = p;
+  const clear = () => { if (_gtrendPromise === p) _gtrendPromise = null; };
+  p.then(clear, clear);
+  return p;
+}
+
 reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_gtrend_d');}, icon:'🔥', cat:'info',
   render(body, cfg, id) {
 
     /* ── Config ── */
     const DEFAULT_SHOW = 5;
-    const PER_PAGE     = 15;
-
-    /* ── P2: use shared cache factory ── */
-    const gtrendCache = makeLocalCache('gtrend_cache_v2', 10 * 60 * 1000);
-
-    /* Build API URL: repos created in the last 7 days, sorted by stars descending */
-    function buildApiUrl() {
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const dateStr = since.toISOString().slice(0, 10); // YYYY-MM-DD
-      return `https://api.github.com/search/repositories?q=created:>${dateStr}&sort=stars&order=desc&per_page=${PER_PAGE}`;
-    }
-
-    /* ── Language dot colour class ── */
-    // Symbol-only languages need an explicit alias — stripping non-letters
-    // from "C++"/"C#" would otherwise collapse both onto the "C" class.
-    const LANG_ALIAS = { 'c++': 'cpp', 'c#': 'csharp', 'f#': 'fsharp' };
-    const langClass = l => {
-      const key = (l || '').toLowerCase();
-      return 'lang-' + (LANG_ALIAS[key] || key.replace(/[^a-z0-9]/g, ''));
-    };
-
-    /* ── GitHub Search API → item array ── */
-    function parseApiResponse(data) {
-      return (data.items || []).map(repo => ({
-        repoName: repo.full_name,
-        link:     repo.html_url,
-        stars:    repo.stargazers_count >= 1000
-                    ? (repo.stargazers_count / 1000).toFixed(1) + 'k'
-                    : String(repo.stargazers_count),
-        language: repo.language || '',
-        desc:     (repo.description || '').slice(0, 100),
-      }));
-    }
 
     /* ── Build item element ── */
     function makeItem(item, rank) {
@@ -67,7 +91,7 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
       if (item.language) {
         const langEl = document.createElement('div'); langEl.className = 'gt-lang';
         const dot = document.createElement('span');
-        dot.className = 'gt-lang-dot ' + langClass(item.language);
+        dot.className = 'gt-lang-dot ' + _trendLangClass(item.language);
         langEl.append(dot, document.createTextNode(item.language));
         a.appendChild(langEl);
       }
@@ -99,7 +123,7 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
       }
 
       /* footer timestamp */
-      const ts = gtrendCache.age();
+      const ts = _gtrendCache.age();
       if (ts) {
         const mins = Math.floor((Date.now() - ts) / 60000);
         footerMsg.textContent = (isStale ? '⚠ ' : '') + t('gtrend_mins_ago', mins);
@@ -122,43 +146,27 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
 
     function fetchTrending(force) {
       if (!force) {
-        const cached = gtrendCache.load();
+        const cached = _gtrendCache.load();
         if (cached) { render(cached, false); return; }
       }
       // Offline: use stale cache or show brief message
       if (!navigator.onLine) {
-        const stale = gtrendCache.loadStale();
+        const stale = _gtrendCache.loadStale();
         if (stale && stale.length > 0) { render(stale, true); return; }
         list.innerHTML = '<div class="gt-msg">⚡ ' + (lang === 'zh' ? '离线' : 'Offline') + '</div>';
         return;
       }
       showLoading();
 
-      fetch(buildApiUrl(), {
-        headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
-      })
-        .then(r => {
-          if (r.status === 403) throw new Error('rate_limit');
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(data => {
-          const items = parseApiResponse(data);
-          if (items.length > 0) {
-            gtrendCache.save(items);
-            render(items, false);
-          } else {
-            throw new Error('empty');
-          }
-        })
+      _fetchTrendingData()
+        .then(items => { if (body.isConnected) render(items, false); })
         .catch(err => {
+          if (!body.isConnected) return;
           console.warn('[gtrend] fetch failed:', err);
-          const stale = gtrendCache.loadStale();
+          const stale = _gtrendCache.loadStale();
           if (stale && stale.length > 0) {
             render(stale, true);
-            if (err.message === 'rate_limit') {
-            footerMsg.textContent = t('gtrend_rate_cached');
-            }
+            if (err.message === 'rate_limit') footerMsg.textContent = t('gtrend_rate_cached');
           } else {
             list.innerHTML = '<div class="gt-msg">🔥 ' + t('gtrend_error') + '</div>';
             footerMsg.textContent = err.message === 'rate_limit' ? t('gtrend_rate_limit') : '';
@@ -172,7 +180,19 @@ reg({ type:'gtrend', get name(){return t('w_gtrend');}, get desc(){return t('w_g
     footerMsg.title = t('weather_refresh');
     footerMsg.addEventListener('click', e => { e.stopPropagation(); fetchTrending(true); });
 
-    fetchTrending(false);
+    // Cached data paints immediately; the network request waits for idle.
+    const initial = _gtrendCache.load();
+    if (initial) {
+      render(initial, false);
+    } else if (!navigator.onLine) {
+      fetchTrending(false);
+    } else if (window.requestIdleCallback) {
+      showLoading();
+      requestIdleCallback(() => { if (body.isConnected) fetchTrending(false); }, { timeout: 800 });
+    } else {
+      showLoading();
+      setTimeout(() => { if (body.isConnected) fetchTrending(false); }, 200);
+    }
   }
 });
 

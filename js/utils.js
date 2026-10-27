@@ -19,7 +19,8 @@ function normalizeUrl(raw) {
 
 // ── Unique ID generator ───────────────────────────────────
 function genId(prefix = 'w') {
-  return prefix + '_' + Math.random().toString(36).slice(2, 9);
+  try { return prefix + '_' + crypto.randomUUID().slice(0, 8); }
+  catch (_) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
 }
 
 // ── Debounce ──────────────────────────────────────────────

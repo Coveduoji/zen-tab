@@ -17,9 +17,12 @@ reg({ type:'notes', get name(){return t('w_notes');}, get desc(){return t('w_not
 
     // Auto-save on input (debounced) and on blur
     let timer;
-    function persist() { cfg.content = ta.value; saveWCfg(id, cfg); }
-    ta.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(persist, 400); });
-    ta.addEventListener('blur',  () => { clearTimeout(timer); persist(); });
+    function persist(useDebounce) { cfg.content = ta.value; saveWCfg(id, cfg, useDebounce); }
+    ta.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => persist(true), 400);
+    });
+    ta.addEventListener('blur',  () => { clearTimeout(timer); persist(false); });
 
     // Inject font-size buttons into w-controls (deferred so DOM is ready)
     setTimeout(() => {

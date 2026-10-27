@@ -4,35 +4,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard — New Tab</title>
-<!-- Warm up the favicon service's connection before any link widget's
-     <img> tag actually requests one — shaves the DNS+TCP+TLS handshake off
-     the critical path for the first icon paint on every open. The image
-     bytes themselves are already browser-cached by the service's own
-     Cache-Control (~7 days); this only targets the "cold connection" part
-     of that request, which caching bytes alone doesn't help with. -->
-<link rel="preconnect" href="https://www.google.com" crossorigin>
+<!-- Only a DNS hint for the favicon service; a `crossorigin` preconnect was
+     useless here because these <img> requests are no-cors. -->
 <link rel="dns-prefetch" href="https://www.google.com">
 <style>
-  /* System font stack — replaces Google Fonts (blocked by extension CSP) */
+  /* System font stacks — the same values are defined in style.css. Keeping a
+     copy here avoids a fallback-font flash before the stylesheet is parsed. */
   :root {
-    --mono: 'Courier New', Courier, monospace;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
     --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
+  /* First-paint background (matches the theme backgrounds in style.css). */
+  html { background: #0b0b12; }
+  html[data-theme="light"] { background: #f7f3ee; }
+  html[data-theme="monet"] { background: #dfe7ff; }
+  html[data-theme="monet"][data-monet-hue="rose"] { background: #ffd6e0; }
+  html[data-theme="monet"][data-monet-hue="ocean"] { background: #d4f1f9; }
+  html[data-theme="monet"][data-monet-hue="forest"] { background: #d4edda; }
+  html[data-theme="monet"][data-monet-hue="terracotta"] { background: #ffe8d6; }
+  html[data-theme="monet"][data-monet-hue="sand"] { background: #f5f0e8; }
 </style>
+<!-- First-paint theme hint. MV3 rejects inline scripts (and manifest CSP
+     hashes are rejected as insecure), so this stays a blocking local script.
+     It runs before style.css so the saved theme is set before first paint. -->
+<script src="js/theme-init.js"></script>
 <link rel="stylesheet" href="style.css">
-<script>
-  /* Anti-FOUC: read saved theme from localStorage before first paint */
-  (function() {
-    try {
-      var s = JSON.parse(localStorage.getItem('dash_v3'));
-      var th  = (s && s.settings && s.settings.theme)    || 'monet';
-      var hue = (s && s.settings && s.settings.monetHue) || 'lavender';
-      document.documentElement.setAttribute('data-theme', th);
-      if (th === 'monet') document.documentElement.setAttribute('data-monet-hue', hue);
-      else document.documentElement.removeAttribute('data-monet-hue');
-    } catch(e) {}
-  })();
-</script>
 </head>
 <body>
 <!-- BACKGROUND LAYERS -->
@@ -101,7 +97,6 @@
   <div id="edit-bar">
     <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
     <div id="edit-bar-actions">
-      <button class="edit-action-btn tidy" id="btn-tidy" data-i18n="tidy_btn"></button>
       <button class="edit-action-btn done" id="btn-done" data-i18n="done_btn"></button>
     </div>
   </div>
@@ -113,7 +108,7 @@
   <div id="grid-outer">
     <div id="grid-canvas">
       <div id="grid-bg"></div>
-      <div id="drop-ghost"></div>
+      <div id="drop-marker" aria-hidden="true"></div>
       <div id="empty-hint">
         <div class="eh-ico">✦</div>
         <div class="eh-t" data-i18n="empty_title"></div>
@@ -122,8 +117,8 @@
     </div>
   </div>
 
-  <div id="theme-overlay"></div>
   <div id="panel-overlay"></div>
+  <div id="theme-ripple" aria-hidden="true"></div>
 
   <!-- MARKETPLACE -->
   <div class="center-modal-bg" id="marketplace-bg">
@@ -235,9 +230,11 @@
      6. Widget definitions (depend on registry helpers)
      7. Main entry (boots everything)
      ═══════════════════════════════════════════ -->
+<!-- build:scripts:start -->
 <script src="js/registry.js"></script>
 <script src="js/i18n.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/core/ticker.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/state.js"></script>
 <script src="js/theme.js"></script>
@@ -265,5 +262,6 @@
 
 <!-- Entry point -->
 <script src="js/main.js"></script>
+<!-- build:scripts:end -->
 </body>
 </html>

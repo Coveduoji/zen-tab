@@ -9,9 +9,12 @@ const MONET_HUES = [
   { id:'sand',       label:'沙丘',   labelEn:'Sand',       ripple:'#f5f0e8', grad:'linear-gradient(135deg,#f5f0e8,#fdf6ec,#fffbf5)', bg:'#f5f0e8', card:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.28)', accent:'#a0522d' },
 ];
 
-// ── View Transitions ripple ──────────────────────────────
-let _rippleBusy = false;
-let _currentTransition = null;
+// ── Theme switching ──────────────────────────────────────
+// The theme is committed synchronously and a purely decorative, pointer-events
+// none splash plays on top. The old View Transition approach snapshotted the
+// whole page and blocked interaction for up to 2.4s — exactly the "wait for the
+// animation" feeling we want to remove.
+let _rippleTimer = 0;
 
 function _commitTheme(th, hue) {
   const root = document.documentElement;
@@ -20,115 +23,145 @@ function _commitTheme(th, hue) {
   else root.removeAttribute('data-monet-hue');
 }
 
-function _runRippleTransition(fromEl, commitFn, onDone) {
-  if (!document.startViewTransition ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    commitFn();
-    if (onDone) onDone();
-    return;
-  }
-
-  // Skip any in-progress transition so the new one starts immediately
-  if (_currentTransition) {
-    _currentTransition.skipTransition();
-    _currentTransition = null;
-  }
-
-  const root = document.documentElement;
-  if (fromEl) {
-    const r = fromEl.getBoundingClientRect();
-    root.style.setProperty('--vt-ox', Math.round(r.left + r.width  / 2) + 'px');
-    root.style.setProperty('--vt-oy', Math.round(r.top  + r.height / 2) + 'px');
-  } else {
-    root.style.setProperty('--vt-ox', window.innerWidth  + 'px');
-    root.style.setProperty('--vt-oy', '0px');
-  }
-
-  const transition = document.startViewTransition(() => { commitFn(); });
-  _currentTransition = transition;
-
-  const fabGroup = document.getElementById('fab-group');
-  if (fabGroup) fabGroup.classList.add('keep-visible');
-
-  const cleanup = (isSelf) => {
-    root.style.removeProperty('--vt-ox');
-    root.style.removeProperty('--vt-oy');
-    if (isSelf && fabGroup) fabGroup.classList.remove('keep-visible');
-    if (isSelf) { _currentTransition = null; _rippleBusy = false; }
-  };
-
-  // transition.finished can fail to ever settle (observed in testing —
-  // the ripple still plays and the theme still applies, but the promise
-  // itself never resolves or rejects). Since onDone is what re-renders the
-  // settings panel (and restores focus to the matching control) after a
-  // theme switch, a hung promise here means that panel's selection
-  // highlight — and keyboard focus — stays stuck on the old theme forever.
-  // A timeout fallback guarantees onDone always eventually runs.
-  let settled = false;
-  const finish = (isSelf) => {
-    if (settled) return;
-    settled = true;
-    cleanup(isSelf);
-    if (isSelf && onDone) onDone();
-  };
-  transition.finished
-    .then(() => finish(_currentTransition === transition))
-    .catch(() => finish(_currentTransition === transition));
-  setTimeout(() => finish(_currentTransition === transition), 1200);
+function _playThemeRipple(fromEl) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const el = document.getElementById('theme-ripple');
+  if (!el) return;
+  const r = fromEl ? fromEl.getBoundingClientRect() : null;
+  const x = r ? r.left + r.width / 2 : window.innerWidth / 2;
+  const y = r ? r.top + r.height / 2 : window.innerHeight / 2;
+  el.style.setProperty('--ripple-x', Math.round(x) + 'px');
+  el.style.setProperty('--ripple-y', Math.round(y) + 'px');
+  el.classList.remove('run');
+  void el.offsetWidth; // restart the CSS animation
+  el.classList.add('run');
+  clearTimeout(_rippleTimer);
+  _rippleTimer = setTimeout(() => el.classList.remove('run'), 700);
 }
 
-function applyTheme(th, fromEl) {
+function _afterThemeChange() {
+  applyBackgroundNow();
+  // Update the settings panel immediately; the old code waited for the View
+  // Transition to finish, which made the panel feel frozen.
+  if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
+}
+
+function applyTheme(th, fromEl, { animate = true, persist = true } = {}) {
   const hue = state.settings.monetHue || 'lavender';
-  _runRippleTransition(fromEl, () => {
-    _commitTheme(th, hue);
-    state.settings.theme = th;
-    saveState();
-    applyBackground();
-  }, () => {
-    if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
-  });
+  const unchanged = state.settings.theme === th;
+  _commitTheme(th, hue);
+  state.settings.theme = th;
+  if (persist && !unchanged) saveState();
+  // Ripple before renderSettings(): rebuilding the panel detaches fromEl, and
+  // a detached element has no rect (the splash would start at 0,0).
+  if (animate && !unchanged) _playThemeRipple(fromEl);
+  _afterThemeChange();
 }
 
 function applyMonetHue(hueId, fromEl) {
+  const unchanged = state.settings.theme === 'monet' && state.settings.monetHue === hueId;
   state.settings.monetHue = hueId;
   if (state.settings.theme !== 'monet') state.settings.theme = 'monet';
+  if (unchanged) return;
+  _commitTheme('monet', hueId);
   saveState();
-  _runRippleTransition(fromEl, () => {
-    _commitTheme('monet', hueId);
-  }, renderSettings);
+  _playThemeRipple(fromEl);
+  _afterThemeChange();
 }
 
 
 // ── Background system ─────────────────────────────────────
 const BG_DEFAULTS = { type:'default', value:'', overlay:0, blur:0, brightness:1 };
 
-function applyBackground() {
+// Last values written to #bg-layer/#bg-overlay. Writing the multi-MB
+// backgroundImage again on every slider tick invalidates style and forces a
+// full-screen repaint even when the image itself did not change.
+const _appliedBg = {
+  type: null, value: null, filter: null, overlay: null, hasCustom: null,
+};
+let _bgRAF = 0;
+
+function _applyBackgroundNow({ deferImage = false } = {}) {
   const bg    = state.settings.background || { ...BG_DEFAULTS };
   const layer = document.getElementById('bg-layer');
   const ovEl  = document.getElementById('bg-overlay');
-  if (!layer) return;
-  const hasImg   = bg.type === 'image' && bg.value;
-  const hasColor = bg.type === 'color' && bg.value;
-  if (hasImg) {
-    layer.style.backgroundImage = `url("${bg.value}")`;
-    layer.style.backgroundSize = 'cover'; layer.style.backgroundPosition = 'center'; layer.style.backgroundColor = '';
-    const blurPx = parseFloat(bg.blur)||0, brightness = parseFloat(bg.brightness)||1;
-    const filters = [];
-    if (blurPx > 0) filters.push(`blur(${blurPx}px) scale(1.06)`);
-    if (brightness !== 1) filters.push(`brightness(${brightness})`);
-    layer.style.filter = filters.join(' ') || '';
-  } else if (hasColor) {
-    layer.style.backgroundImage = 'none'; layer.style.backgroundColor = bg.value; layer.style.filter = '';
-  } else {
-    layer.style.backgroundImage = 'none'; layer.style.backgroundColor = ''; layer.style.filter = '';
+  if (!layer || !ovEl) return;
+
+  const hasImg   = bg.type === 'image' && !!bg.value;
+  const hasColor = bg.type === 'color' && !!bg.value;
+  const hasCustom = hasImg || hasColor;
+  const blurPx   = parseFloat(bg.blur) || 0;
+  const bright   = parseFloat(bg.brightness) || 1;
+  const ov       = parseFloat(bg.overlay) || 0;
+  const th       = document.documentElement.getAttribute('data-theme') || 'dark';
+  const isLight  = th === 'light' || th === 'monet';
+
+  // A multi-MB data-URL background can delay the first contentful paint by
+  // its decode time. On boot we paint the theme/overlay first and let the
+  // caller apply the actual image one or two frames later.
+  const showImage = !deferImage;
+
+  if (showImage && (_appliedBg.type !== bg.type || _appliedBg.value !== bg.value)) {
+    if (hasImg) {
+      layer.style.backgroundImage = `url("${bg.value}")`;
+      layer.style.backgroundSize = 'cover';
+      layer.style.backgroundPosition = 'center';
+      layer.style.backgroundColor = '';
+    } else if (hasColor) {
+      layer.style.backgroundImage = 'none';
+      layer.style.backgroundColor = bg.value;
+    } else {
+      layer.style.backgroundImage = 'none';
+      layer.style.backgroundColor = '';
+    }
+    _appliedBg.type = bg.type;
+    _appliedBg.value = bg.value || '';
   }
-  const ov = parseFloat(bg.overlay)||0;
-  if (ov > 0 && !pureMode) {
-    const th = document.documentElement.getAttribute('data-theme')||'dark';
-    const isLight = th==='light'||th==='monet';
-    ovEl.style.background = isLight ? `rgba(255,255,255,${ov*0.5})` : `rgba(0,0,0,${ov})`;
-  } else { ovEl.style.background = ''; }
-  document.body.classList.toggle('has-custom-bg', !!(hasImg || hasColor));
+
+  const filters = [];
+  if (hasImg) {
+    if (blurPx > 0) filters.push(`blur(${blurPx}px) scale(1.06)`);
+    if (bright !== 1) filters.push(`brightness(${bright})`);
+  }
+  const filterStr = filters.join(' ');
+  if (_appliedBg.filter !== filterStr) {
+    layer.style.filter = filterStr;
+    _appliedBg.filter = filterStr;
+  }
+
+  const overlay = (ov > 0 && !pureMode)
+    ? (isLight ? `rgba(255,255,255,${ov * 0.5})` : `rgba(0,0,0,${ov})`)
+    : '';
+  if (_appliedBg.overlay !== overlay) {
+    ovEl.style.background = overlay;
+    _appliedBg.overlay = overlay;
+  }
+
+  // While the image is deferred, keep the theme background visible: the
+  // has-custom-bg class makes html/body transparent. The class is added by
+  // the deferred full apply, together with the image.
+  const customApplied = showImage ? hasCustom : false;
+  if (_appliedBg.hasCustom !== customApplied) {
+    document.body.classList.toggle('has-custom-bg', customApplied);
+    document.documentElement.classList.toggle('has-custom-bg', customApplied);
+    _appliedBg.hasCustom = customApplied;
+  }
+}
+
+// Coalesce slider `input` bursts into one style write per frame.
+function applyBackground() {
+  if (_bgRAF) return;
+  _bgRAF = requestAnimationFrame(() => {
+    _bgRAF = 0;
+    _applyBackgroundNow();
+  });
+}
+
+// Synchronous variant for boot / theme commits / image changes, where the
+// value must be in place before the next paint (or View Transition snapshot).
+function applyBackgroundNow(opts) {
+  if (_bgRAF) { cancelAnimationFrame(_bgRAF); _bgRAF = 0; }
+  _applyBackgroundNow(opts);
 }
 
 function _loadBgFile(file) {
@@ -140,7 +173,7 @@ function _loadBgFile(file) {
     bg.type = 'image'; bg.value = ev.target.result;
     if (bg.brightness === undefined) bg.brightness = 1;
     delete bg.palette; applyBgPalette(null);
-    saveState(); applyBackground();
+    saveState(); applyBackgroundNow();
     if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
     toast(lang==='zh' ? '背景已更新，可点击「从背景取色」提取配色' : 'Background updated — tap "Sample Colors" to extract palette', 'ok');
   };
@@ -226,13 +259,8 @@ async function triggerBgPaletteExtraction(fromBtn) {
   if(fromBtn){fromBtn.disabled=true;fromBtn.textContent=lang==='zh'?'取色中…':'Sampling…';}
   try{
     const palette=await extractPaletteFromDataUrl(bg.value);bg.palette=palette;saveState();applyBgPalette(palette);
-    if(fromBtn&&!_rippleBusy){
-      _runRippleTransition(fromBtn, () => { applyBgPalette(palette); }, () => {
-        if(document.getElementById('settings-bg')?.classList.contains('open'))renderSettings();
-      });
-    } else {
-      if(document.getElementById('settings-bg')?.classList.contains('open'))renderSettings();
-    }
+    if(fromBtn) _playThemeRipple(fromBtn);
+    if(document.getElementById('settings-bg')?.classList.contains('open'))renderSettings();
   }catch(e){toast(lang==='zh'?'取色失败，请重试':'Extraction failed, try again','err');}
   finally{if(fromBtn){fromBtn.disabled=false;fromBtn.textContent=lang==='zh'?'🎨 从背景取色':'🎨 Sample Colors';}}
 }

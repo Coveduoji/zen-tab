@@ -5,6 +5,11 @@ let linkCustomImg   = null;
 
 const LINK_EMOJIS = ['🌐','🔗','⭐','🏠','💻','📱','🎯','🚀','💡','📌','🔖','📰','🎮','🎨','🎵','🛒','📊','💰','📚','🔬','🌍','✈️','🏆','💬','📧','🔐','⚙️','🧪','🖥️','📷'];
 
+// Key of the icon currently rendered in the modal preview. Typing a name (or
+// re-typing the same host) must not rebuild the <img> and re-request a favicon.
+let _previewIconKey = null;
+let _previewImgVersion = 0;
+
 function updateLinkPreview() {
   const url  = normalizeUrl(document.getElementById('link-url').value);
   const name = document.getElementById('link-name').value.trim();
@@ -15,26 +20,35 @@ function updateLinkPreview() {
   const prevIco  = document.getElementById('link-icon-preview');
   if (prevName) prevName.textContent = name || host || '—';
   if (prevHost) prevHost.textContent = host || (lang==='zh' ? '输入 URL 自动获取图标' : 'Enter a URL to fetch icon');
-  if (prevIco) {
-    if (linkCustomImg) {
-      prevIco.innerHTML = `<img src="${linkCustomImg}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`;
-    } else if (linkCustomEmoji) {
-      prevIco.innerHTML = `<span style="font-size:1.8rem">${linkCustomEmoji}</span>`;
-    } else if (host) {
-      const favUrl = `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
-      const _img = document.createElement('img');
-      _img.src = favUrl; _img.alt = '';
-      _img.addEventListener('error', () => {
-        const _sp = document.createElement('span');
-        _sp.style.fontSize = '1.8rem'; _sp.textContent = linkEmoji(host);
-        prevIco.innerHTML = ''; prevIco.appendChild(_sp);
-      });
-      prevIco.innerHTML = ''; prevIco.appendChild(_img);
-    } else {
-      prevIco.innerHTML = `<span style="font-size:1.8rem">🌐</span>`;
-    }
+  if (!prevIco) return;
+
+  const iconKey = linkCustomImg ? 'img:' + _previewImgVersion
+    : linkCustomEmoji ? 'emoji:' + linkCustomEmoji
+    : host ? 'host:' + host : 'none';
+  if (iconKey === _previewIconKey) return;
+  _previewIconKey = iconKey;
+
+  if (linkCustomImg) {
+    prevIco.innerHTML = `<img src="${linkCustomImg}" alt="" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`;
+  } else if (linkCustomEmoji) {
+    prevIco.innerHTML = `<span style="font-size:1.8rem">${linkCustomEmoji}</span>`;
+  } else if (host) {
+    const favUrl = `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
+    const _img = document.createElement('img');
+    _img.decoding = 'async';
+    _img.src = favUrl; _img.alt = '';
+    _img.addEventListener('error', () => {
+      const _sp = document.createElement('span');
+      _sp.style.fontSize = '1.8rem'; _sp.textContent = linkEmoji(host);
+      prevIco.innerHTML = ''; prevIco.appendChild(_sp);
+    });
+    prevIco.innerHTML = ''; prevIco.appendChild(_img);
+  } else {
+    prevIco.innerHTML = `<span style="font-size:1.8rem">🌐</span>`;
   }
 }
+
+const updateLinkPreviewSoon = debounce(updateLinkPreview, 250);
 
 function _syncImgPreviewUI() {
   const preview  = document.getElementById('lm-img-preview');
@@ -107,13 +121,16 @@ function showLinkModal(cfg={}, cb, isEdit=false, widgetId=null) {
     }
   }
 
+  _previewIconKey = null;
   buildEmojiPicker(); _syncImgPreviewUI(); updateLinkPreview();
   document.getElementById('link-modal').classList.add('open');
   setTimeout(() => document.getElementById('link-name').focus(), 40);
 }
 
 function initLinkModal() {
-  document.getElementById('link-url').addEventListener('input', updateLinkPreview);
+  // URL typing can fire many favicon requests; debounce it. The name field
+  // updates text immediately and never rebuilds the icon (host key unchanged).
+  document.getElementById('link-url').addEventListener('input', updateLinkPreviewSoon);
   document.getElementById('link-name').addEventListener('input', updateLinkPreview);
 
   document.getElementById('lm-img-preview').addEventListener('click', () => {
@@ -127,6 +144,7 @@ function initLinkModal() {
     // even on high-DPI screens) instead of storing an unbounded original
     // against the localStorage quota shared with every other custom icon.
     resizeImageFile(file, 400).then(dataUrl => {
+      _previewImgVersion++;
       linkCustomImg = dataUrl; linkCustomEmoji = null;
       document.querySelectorAll('.lm-emoji-btn').forEach(b => b.classList.remove('sel'));
       _syncImgPreviewUI(); updateLinkPreview();

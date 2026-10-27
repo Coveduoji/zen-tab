@@ -1,15 +1,91 @@
-let _weatherPos = null; // { latitude, longitude } or null
+/* Weather data is shared by every weather widget on the page: one
+   geolocation prompt, one Open-Meteo request, one Nominatim lookup per city. */
+const WMO = {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌦',61:'🌧',65:'🌧',71:'❄️',80:'🌦',95:'⛈'};
+const DZH = {0:'晴',1:'晴间多云',2:'多云',3:'阴',45:'雾',51:'毛毛雨',61:'小雨',65:'大雨',71:'小雪',80:'阵雨',95:'雷暴'};
+const DEN = {0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',51:'Drizzle',61:'Light rain',65:'Heavy rain',71:'Light snow',80:'Showers',95:'Thunderstorm'};
+const DOWS_ZH = ['日','一','二','三','四','五','六'];
+const DOWS_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+const _weatherCache = makeLocalCache('weather_cache_v2', 10 * 60 * 1000);
+const _cityCache = makeLocalCache('weather_city_v1', 7 * 24 * 60 * 60 * 1000);
+let _weatherPos = null;          // { latitude, longitude } for this session
+let _weatherPosPromise = null;
+let _weatherFetchPromise = null;
+let _weatherFetchKey = '';
+
+function _timeoutSignal(ms) {
+  try { return AbortSignal.timeout(ms); } catch (_) { return undefined; }
+}
+
+function _getWeatherPosition() {
+  if (_weatherPos) return Promise.resolve(_weatherPos);
+  if (_weatherPosPromise) return _weatherPosPromise;
+  if (!navigator.geolocation) return Promise.reject(new Error('unsupported'));
+  _weatherPosPromise = new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        _weatherPos = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        resolve(_weatherPos);
+      },
+      err => { _weatherPosPromise = null; reject(err); },
+      { timeout: 8000, maximumAge: 5 * 60 * 1000 }
+    );
+  });
+  return _weatherPosPromise;
+}
+
+function _fetchWeatherData(la, lo) {
+  const key = la.toFixed(3) + ',' + lo.toFixed(3);
+  if (_weatherFetchPromise && _weatherFetchKey === key) return _weatherFetchPromise;
+  _weatherFetchKey = key;
+
+  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}` +
+    `&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min` +
+    `&timezone=auto&forecast_days=7`;
+
+  const cachedCity = (_cityCache.load() || _cityCache.loadStale() || {})[key] || '';
+  const cityPromise = cachedCity
+    ? Promise.resolve(cachedCity)
+    : fetch(`https://nominatim.openstreetmap.org/reverse?lat=${la}&lon=${lo}&format=json`, { signal: _timeoutSignal(8000) })
+        .then(r => r.json())
+        .then(geo => geo.address?.city || geo.address?.town || geo.address?.village || '')
+        .catch(() => '');
+
+  const p = Promise.all([
+    fetch(weatherUrl, { signal: _timeoutSignal(8000) }).then(r => r.json()),
+    cityPromise,
+  ]).then(([d, city]) => {
+    const cw = d.current_weather;
+    const data = {
+      icon: WMO[cw.weathercode] || '🌡',
+      desc: (lang === 'zh' ? DZH : DEN)[cw.weathercode] || '',
+      temp: Math.round(cw.temperature),
+      city: city || '—',
+      daily: (d.daily?.weathercode || []).map((code, i) => ({
+        code,
+        hi: d.daily.temperature_2m_max[i],
+        lo: d.daily.temperature_2m_min[i],
+      })),
+    };
+    if (city) {
+      const map = _cityCache.loadStale() || {};
+      map[key] = city;
+      _cityCache.save(map);
+    }
+    _weatherCache.save(data);
+    return data;
+  });
+
+  _weatherFetchPromise = p;
+  const clear = () => {
+    if (_weatherFetchPromise === p) { _weatherFetchPromise = null; _weatherFetchKey = ''; }
+  };
+  p.then(clear, clear);
+  return p;
+}
 
 reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w_weather_d');}, icon:'🌤', cat:'info',
   render(body, cfg, id) {
-    const WMO = {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌦',61:'🌧',65:'🌧',71:'❄️',80:'🌦',95:'⛈'};
-    const DZH = {0:'晴',1:'晴间多云',2:'多云',3:'阴',45:'雾',51:'毛毛雨',61:'小雨',65:'大雨',71:'小雪',80:'阵雨',95:'雷暴'};
-    const DEN = {0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',51:'Drizzle',61:'Light rain',65:'Heavy rain',71:'Light snow',80:'Showers',95:'Thunderstorm'};
-    const DOWS_ZH = ['日','一','二','三','四','五','六'];
-    const DOWS_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-    /* ── P2: use shared cache factory instead of inline loadCache/saveCache ── */
-    const weatherCache = makeLocalCache('weather_cache_v2', 10 * 60 * 1000);
 
     /* ── Main widget DOM — horizontal layout ── */
     const wrap = document.createElement('div');
@@ -148,82 +224,52 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
       document.addEventListener('keydown', escHandler);
     }
 
-    /* ── Fetch with 7-day data ── */
+    function showPermission() {
+      row.style.display = 'none';
+      msgEl.innerHTML = '';
+      const permDiv = document.createElement('div');
+      permDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0;';
+      const permText = document.createElement('div');
+      permText.style.cssText = 'font-size:.78rem;color:var(--text-muted);text-align:center;line-height:1.4;';
+      permText.textContent = t('weather_allow');
+      const permBtn = document.createElement('button');
+      permBtn.style.cssText = 'padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-glass);color:var(--text);cursor:pointer;font-size:.75rem;';
+      permBtn.textContent = lang === 'zh' ? '重新授权' : 'Grant Access';
+      permBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        msgEl.innerHTML = '';
+        fetchWeather(true);
+      });
+      permDiv.append(permText, permBtn);
+      msgEl.appendChild(permDiv);
+    }
+
+    /* ── Fetch with 7-day data (shared across widget instances) ── */
     function fetchWeather(force) {
       if (!force) {
-        const cached = weatherCache.load();
+        const cached = _weatherCache.load();
         if (cached) { showData(cached); return; }
       }
       // Offline: show stale cache or a brief message — don't attempt network
       if (!navigator.onLine) {
-        const stale = weatherCache.loadStale();
+        const stale = _weatherCache.loadStale();
         if (stale) { showData(stale); return; }
         showMsg(lang === 'zh' ? '⚡ 离线' : '⚡ Offline');
         return;
       }
       showMsg(t('weather_loading'));
 
-      function doFetch(la, lo) {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}` +
-          `&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min` +
-          `&timezone=auto&forecast_days=7`;
-        fetch(url)
-          .then(r => r.json())
-          .then(d => {
-            const cw   = d.current_weather;
-            const icon = WMO[cw.weathercode] || '🌡';
-            const desc = (lang === 'zh' ? DZH : DEN)[cw.weathercode] || '';
-            const temp = Math.round(cw.temperature);
-            const daily = (d.daily?.weathercode || []).map((code, i) => ({
-              code,
-              hi: d.daily.temperature_2m_max[i],
-              lo: d.daily.temperature_2m_min[i],
-            }));
-            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${la}&lon=${lo}&format=json`)
-              .then(r => r.json())
-              .then(geo => {
-                const city = geo.address?.city || geo.address?.town || geo.address?.village || '—';
-                const data = { icon, temp, desc, city, daily };
-                weatherCache.save(data); showData(data);
-              })
-              .catch(() => {
-                const data = { icon, temp, desc, city: '—', daily };
-                weatherCache.save(data); showData(data);
-              });
-          })
-          .catch(() => showMsg(t('weather_error')));
-      }
-
-      // Re-use position from this session — avoids prompting on every renderAll()
-      if (_weatherPos) {
-        doFetch(_weatherPos.latitude, _weatherPos.longitude);
-        return;
-      }
-      if (!navigator.geolocation) { showMsg(t('weather_ns')); return; }
-      navigator.geolocation.getCurrentPosition(pos => {
-        _weatherPos = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-        doFetch(_weatherPos.latitude, _weatherPos.longitude);
-      }, () => {
-        // Permission denied or timed out — show persistent prompt
-
-        row.style.display = 'none';
-        msgEl.innerHTML = '';
-        const permDiv = document.createElement('div');
-        permDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0;';
-        const permText = document.createElement('div');
-        permText.style.cssText = 'font-size:.78rem;color:var(--text-muted);text-align:center;line-height:1.4;';
-        permText.textContent = t('weather_allow');
-        const permBtn = document.createElement('button');
-        permBtn.style.cssText = 'padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-glass);color:var(--text);cursor:pointer;font-size:.75rem;';
-        permBtn.textContent = lang === 'zh' ? '重新授权' : 'Grant Access';
-        permBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          msgEl.innerHTML = '';
-          fetchWeather(true);
+      _getWeatherPosition().then(pos => {
+        return _fetchWeatherData(pos.latitude, pos.longitude).then(data => {
+          if (body.isConnected) showData(data);
+        }, () => {
+          if (body.isConnected) showMsg(t('weather_error'));
         });
-        permDiv.append(permText, permBtn);
-        msgEl.appendChild(permDiv);
-      }, { timeout: 8000, maximumAge: 5 * 60 * 1000 });
+      }, err => {
+        if (!body.isConnected) return;
+        if (err && err.message === 'unsupported') showMsg(t('weather_ns'));
+        else showPermission();
+      });
     }
 
     /* ── Events ── */
@@ -236,19 +282,32 @@ reg({ type:'weather', get name(){return t('w_weather');}, get desc(){return t('w
       if (e.target === refreshBtn) return;
       e.stopPropagation();
       if (weatherWidget && weatherWidget._wasDragged) return;
-      const cached = weatherCache.load();
+      const cached = _weatherCache.load();
       if (cached && cached.daily) {
         openForecastModal(cached);
       } else {
         fetchWeather(false);
         registerTimer(id, setTimeout(() => {
-          const c2 = weatherCache.load();
-          if (c2 && c2.daily) openForecastModal(c2);
+          const c2 = _weatherCache.load();
+          if (c2 && c2.daily && body.isConnected) openForecastModal(c2);
         }, 3000));
       }
     });
 
-    fetchWeather(false);
+    // Render cached data immediately; only hit the network once the page is
+    // idle, so weather can never delay first paint.
+    const initial = _weatherCache.load();
+    if (initial) {
+      showData(initial);
+    } else if (!navigator.onLine) {
+      fetchWeather(false);
+    } else if (window.requestIdleCallback) {
+      showMsg(t('weather_loading'));
+      requestIdleCallback(() => { if (body.isConnected) fetchWeather(false); }, { timeout: 800 });
+    } else {
+      showMsg(t('weather_loading'));
+      setTimeout(() => { if (body.isConnected) fetchWeather(false); }, 200);
+    }
 
     /* ── Responsive scale: shared helper (also used by clock/pomodoro) ── */
     const weatherWidget = body.closest('.widget');

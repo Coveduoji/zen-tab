@@ -1,33 +1,6 @@
-/* ═══════════════════════════════════════════
-   @property — register color vars for CSS transition support
-   ═══════════════════════════════════════════ */
-@property --bg            { syntax: '<color>'; inherits: true; initial-value: #0b0b12; }
-@property --bg2           { syntax: '<color>'; inherits: true; initial-value: #12121c; }
-@property --surface       { syntax: '<color>'; inherits: true; initial-value: #181824; }
-@property --border        { syntax: '<color>'; inherits: true; initial-value: #2c2c42; }
-@property --card-hover    { syntax: '<color>'; inherits: true; initial-value: #1f1f2e; }
-@property --accent        { syntax: '<color>'; inherits: true; initial-value: #7c6af5; }
-@property --accent2       { syntax: '<color>'; inherits: true; initial-value: #f5a66a; }
-@property --accent3       { syntax: '<color>'; inherits: true; initial-value: #6af5c8; }
-@property --text-primary  { syntax: '<color>'; inherits: true; initial-value: #e8e8f4; }
-@property --text-secondary{ syntax: '<color>'; inherits: true; initial-value: #6a6a88; }
-@property --text-dim      { syntax: '<color>'; inherits: true; initial-value: #32324a; }
-
-/* ── Enable colour transitions on the root during theme switch ── */
-:root.theme-animating {
-  transition:
-    --bg             1000ms cubic-bezier(0.4,0,0.2,1),
-    --bg2            1000ms cubic-bezier(0.4,0,0.2,1),
-    --surface        1000ms cubic-bezier(0.4,0,0.2,1),
-    --border         1000ms cubic-bezier(0.4,0,0.2,1),
-    --card-hover     1000ms cubic-bezier(0.4,0,0.2,1),
-    --accent         1000ms cubic-bezier(0.4,0,0.2,1),
-    --accent2        1000ms cubic-bezier(0.4,0,0.2,1),
-    --accent3        1000ms cubic-bezier(0.4,0,0.2,1),
-    --text-primary   1000ms cubic-bezier(0.4,0,0.2,1),
-    --text-secondary 1000ms cubic-bezier(0.4,0,0.2,1),
-    --text-dim       1000ms cubic-bezier(0.4,0,0.2,1);
-}
+/* Theme switching is handled by the View Transitions ripple in theme.js;
+   the old `@property` + `.theme-animating` colour-transition machinery was
+   unused and has been removed (it only added style-invalidation work). */
 
 /* ═══════════════════════════════════════════
    CSS VARIABLES
@@ -68,8 +41,10 @@
   /* ── Radius / font / timing ── */
   --r:    14px;
   --r-sm: 8px;
-  --mono: 'Space Mono', monospace;
-  --body: 'Outfit', sans-serif;
+  /* No web fonts are loaded (MV3 CSP blocks Google Fonts); use the OS
+     stacks directly instead of naming fonts that always fail to load. */
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --ease: cubic-bezier(0.4,0,0.2,1);
   --t:    0.18s;
   --modal-overlay: rgba(0,0,0,0.55);
@@ -133,11 +108,9 @@
   --text-on-dark:   #ffffff;
 }
 
-/* Monet: widgets need backdrop-filter to render glass effect */
-[data-theme="monet"] .widget {
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
-}
+/* Monet widgets are already translucent white over a smooth gradient; a
+   16px backdrop blur there is visually imperceptible but costs GPU on every
+   widget. Real image/colour backgrounds get the glass rule below instead. */
 [data-theme="monet"] .widget:hover {
   --surface: rgba(255,255,255,0.68);
 }
@@ -253,27 +226,6 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); overflow: hidden; user-select: none; -webkit-user-select: none; }
-
-/* ═══════════════════════════════════════════
-   THEME TRANSITION RIPPLE
-   ═══════════════════════════════════════════ */
-#theme-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 0;              /* behind widgets — purely visual ripple guide */
-  pointer-events: none;
-  clip-path: circle(0px at 50% 50%);
-  opacity: 0.35;
-  will-change: clip-path, opacity;
-}
-.theme-transition-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.35;
-  will-change: clip-path;
-}
 
 /* ═══════════════════════════════════════════
    APP SHELL
@@ -408,12 +360,10 @@ html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text
   pointer-events: none;
   transition: opacity .25s ease, transform .25s var(--ease);
   align-items: center;
-  will-change: opacity, transform;
 }
 #fab-group.visible,
 #fab-hover-zone:hover ~ #fab-group,
-#fab-group:hover,
-#fab-group.keep-visible {
+#fab-group:hover {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -501,6 +451,9 @@ html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text
    PURE MODE
    ═══════════════════════════════════════════ */
 .pure-mode #grid-canvas .widget { opacity: 0 !important; pointer-events: none !important; }
+/* After the 0.3s fade, take the widgets out of rendering/update work entirely
+   (tickers are suspended by puremode.js as well). */
+.pure-mode #grid-canvas .pure-hidden { display: none !important; }
 /* base .widget has transitions; grid-canvas specifics handled below */
 .pure-mode #fab-group { pointer-events: auto; /* visible in pure mode so user can exit */ }
 .pure-mode #edit-bar { display: none !important; }
@@ -520,24 +473,20 @@ html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text
   cursor: default;
   background: transparent;
   opacity: 0;
-  backdrop-filter: blur(0px);
-  -webkit-backdrop-filter: blur(0px);
   transition: opacity .38s cubic-bezier(.4,0,.2,1),
-              backdrop-filter .38s cubic-bezier(.4,0,.2,1),
-              -webkit-backdrop-filter .38s cubic-bezier(.4,0,.2,1),
               background .38s cubic-bezier(.4,0,.2,1);
 }
 .pure-mode #pure-overlay {
   opacity: 1;
   pointer-events: auto;
   background: var(--pure-overlay);
+}
+/* Over the built-in smooth gradient a blur is invisible; only pay for it when
+   there is a real image/colour background underneath. */
+body.has-custom-bg.pure-mode #pure-overlay {
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
-[data-theme="light"] 
-/* Legacy pure-clock/date hidden — #top-clock handles everything */
-#pure-clock { display: none !important; }
-#pure-date  { display: none !important; }
 /* ESC hint at bottom of overlay */
 #pure-esc {
   font-size: .68rem;
@@ -546,16 +495,6 @@ html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text
   opacity: .55;
   user-select: none;
 }
-
-/* Settings gear icon button — kept for backward compat */
-.hbtn {
-  width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid var(--card-border);
-  background: var(--card); color: var(--text-muted); cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 1rem;
-  transition: all var(--t) var(--ease); flex-shrink: 0;
-}
-.hbtn:hover { color: var(--text); border-color: var(--accent); background: var(--card-hover); transform: scale(1.06); }
-.hbtn.active { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 
 /* Edit mode indicator bar — fixed, fully interactive */
 #edit-bar {
@@ -602,8 +541,6 @@ body.edit-mode #fab-hover-zone {
 .edit-action-btn:hover { border-color: var(--text); color: var(--text); background: rgba(255,255,255,.12); }
 .edit-action-btn.done { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); box-shadow: 0 4px 16px rgba(124,106,245,.4); }
 .edit-action-btn.done:hover { filter: brightness(1.12); transform: scale(1.03); }
-.edit-action-btn.tidy { border-color: rgba(106,245,200,.5); color: var(--accent3); background: rgba(106,245,200,.08); }
-.edit-action-btn.tidy:hover { background: rgba(106,245,200,.18); border-color: var(--accent3); }
 
 /* ═══════════════════════════════════════════
    GRID SYSTEM
@@ -634,8 +571,8 @@ body.edit-mode #fab-hover-zone {
   background: rgba(124,106,245,.02);
 }
 
-/* Drop ghost — hidden, drag feedback via widget scale only */
-#drop-ghost { display: none !important; }
+/* Drag feedback is the dragged widget's lift/translate; there is no separate
+   drop ghost. */
 
 /* ═══════════════════════════════════════════
    WIDGET BASE
@@ -646,13 +583,14 @@ body.edit-mode #fab-hover-zone {
   border: 1.5px solid var(--border);
   border-radius: var(--r);
   overflow: hidden;
-  will-change: transform;
+  /* No permanent will-change: it forced every widget onto its own compositor
+     layer even when idle. Drag/resize opt in below. width/height are only
+     changed during resize, where transitions are disabled anyway. */
   transition: left .22s var(--ease), top .22s var(--ease),
-              width .22s var(--ease), height .22s var(--ease),
               border-color var(--t), box-shadow var(--t),
               background var(--t), opacity .3s ease;
   box-shadow: var(--shadow-sm);
-  cursor: default;
+  cursor: grab;
   z-index: 5;
 }
 /* Widget header / drag handle area — show grab cursor */
@@ -678,27 +616,62 @@ body.edit-mode #fab-hover-zone {
   z-index: 500 !important;
   box-shadow: 0 20px 50px rgba(0,0,0,.5), 0 0 0 1.5px rgba(124,106,245,.45) !important;
   border-color: rgba(124,106,245,.55) !important;
-  /* Use translate+scale together to avoid conflicting with jiggle */
-  transform: translateX(0) translateY(0) scale(1.04) !important;
+  /* Position is previewed with the independent `translate` property (set from
+     JS); this transform only provides the lift/scale. */
+  transform: scale(1.04) !important;
   transition: box-shadow .12s var(--ease);
   animation: none !important;
-  will-change: transform, left, top;
+  will-change: translate, transform;
 }
 .widget.dragging .w-header { cursor: grabbing !important; }
+/* Drag header: let pointer gestures win over scrolling, but keep the widget
+   body scrollable for notes/embeds in normal mode. */
+.w-header { touch-action: none; }
+.widget[data-type="link"] .w-body { touch-action: none; }
+body.edit-mode .widget { touch-action: none; cursor: grab; }
+body.edit-mode .widget.dragging { cursor: grabbing; }
+
+/* While one widget is being reordered, stop the other widgets from jiggling
+   and drop expensive glass blur so the backdrop is not recomputed per frame. */
+body.any-dragging .widget { animation: none !important; }
+body.any-dragging .widget,
+body.any-dragging .widget * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.widget.resizing {
+  transition: none !important;
+  animation: none !important;
+  will-change: width, height;
+}
+body.resizing .widget { animation: none !important; }
+body.resizing .widget,
+body.resizing .widget * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Hidden tab: CSS animations are throttled anyway, but pause them explicitly
+   (cheap, and covers compositor animations). */
+body.tab-hidden * { animation-play-state: paused !important; }
+/* Window resize/zoom reflows all widgets; don't animate the whole grid. */
+body.reflowing .widget { transition: none !important; }
+/* Background sliders: avoid restarting full-screen transitions per input. */
+body.bg-adjusting #bg-layer,
+body.bg-adjusting #bg-overlay { transition: none !important; }
 /* Inner interactive elements always show correct cursor */
 .widget button,
 .widget a,
 .widget .w-btn,
-.widget .rh,
 .widget .eng-badge,
-.widget .pom-btn,
-.widget .snip-item {
+.widget .pom-btn {
   cursor: pointer !important;
 }
 .widget textarea,
 .widget [contenteditable] {
   cursor: text !important;
 }
+/* Don't start the browser's native image drag when the user drags a widget. */
+.widget img { -webkit-user-drag: none; user-drag: none; }
 
 /* Edit mode: jiggle + visual indicator */
 body.edit-mode .widget {
@@ -728,12 +701,40 @@ body.edit-mode .widget.dragging {
 }
 .w-title .ico { font-size: .82rem; opacity: 1; }
 
-/* Resize handles (edit mode) */
+/* Delete button (edit mode, top-left) */
+.w-delete {
+  display: none;
+  position: absolute;
+  top: 5px; left: 5px;
+  z-index: 130;
+  width: 20px; height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--danger);
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, color .15s, border-color .15s;
+}
+body.edit-mode .w-delete { display: flex; }
+.w-delete:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+/* Leave room for the corner delete button next to the header title. */
+body.edit-mode .w-header { padding-left: 32px; }
+
+/* Resize handles: edit mode only (same as the delete button) */
 .w-resize-handles { display: none; }
 body.edit-mode .w-resize-handles { display: block; }
 .rh {
-  position: absolute; width: 16px; height: 16px; z-index: 100;
+  position: absolute; width: 18px; height: 18px; z-index: 100;
   display: flex; align-items: center; justify-content: center;
+  touch-action: none;
 }
 .rh::before {
   content: ''; width: 10px; height: 10px; border-radius: 50%;
@@ -741,12 +742,22 @@ body.edit-mode .w-resize-handles { display: block; }
   transition: transform .1s;
 }
 .rh:hover::before { transform: scale(1.25); }
-/* Inset (not negative-offset floating past the corner) — .widget has
-   overflow:hidden for its rounded corners, so a child positioned outside
-   the box (or right at its sharp corner, inside the rounded curve) gets
-   silently clipped down to a sliver. 5px clears the corner curve at any of
-   the current --r radius values. */
-.rh.se { bottom: 5px; right: 5px; cursor: se-resize; }
+.rh.se { bottom: 4px; right: 4px; cursor: se-resize; }
+
+/* Reorder drop marker (edit mode) */
+#drop-marker {
+  display: none;
+  position: absolute;
+  z-index: 400;
+  pointer-events: none;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--r);
+  background: rgba(124,106,245,.08);
+  box-shadow: 0 0 0 3px rgba(124,106,245,.08);
+  transition: left .12s var(--ease), top .12s var(--ease),
+              width .12s var(--ease), height .12s var(--ease);
+}
+#drop-marker.show { display: block; }
 
 /* Widget body */
 .w-body {
@@ -786,16 +797,20 @@ body.edit-mode .w-resize-handles { display: block; }
   from { opacity:0; transform:scale(.9) translateY(12px); }
   to   { opacity:1; transform:scale(1) translateY(0); }
 }
-.widget { animation: wIn .26s var(--ease) both; }
+/* One-shot entrance animation. The class is added by makeWidget() and removed
+   on animationend; keeping it off the .widget base prevents it from replaying
+   after a drag (animation:none) or after leaving edit mode, and avoids the
+   fill-mode:both final transform overriding the hover lift forever. */
+.widget.enter { animation: wIn .26s var(--ease) backwards; }
 /* Stagger via nth-child — first 8 widgets get progressive delay */
-#grid-canvas .widget:nth-child(1)  { animation-delay:.02s }
-#grid-canvas .widget:nth-child(2)  { animation-delay:.04s }
-#grid-canvas .widget:nth-child(3)  { animation-delay:.06s }
-#grid-canvas .widget:nth-child(4)  { animation-delay:.08s }
-#grid-canvas .widget:nth-child(5)  { animation-delay:.10s }
-#grid-canvas .widget:nth-child(6)  { animation-delay:.12s }
-#grid-canvas .widget:nth-child(7)  { animation-delay:.14s }
-#grid-canvas .widget:nth-child(8)  { animation-delay:.16s }
+#grid-canvas .widget.enter:nth-child(1)  { animation-delay:.02s }
+#grid-canvas .widget.enter:nth-child(2)  { animation-delay:.04s }
+#grid-canvas .widget.enter:nth-child(3)  { animation-delay:.06s }
+#grid-canvas .widget.enter:nth-child(4)  { animation-delay:.08s }
+#grid-canvas .widget.enter:nth-child(5)  { animation-delay:.10s }
+#grid-canvas .widget.enter:nth-child(6)  { animation-delay:.12s }
+#grid-canvas .widget.enter:nth-child(7)  { animation-delay:.14s }
+#grid-canvas .widget.enter:nth-child(8)  { animation-delay:.16s }
 
 /* ═══════════════════════════════════════════
    WIDGET TYPE: LINK — desktop icon style
@@ -1008,7 +1023,7 @@ body.edit-mode .w-resize-handles { display: block; }
 }
 .notes-ta::placeholder { color: var(--text-dim); }
 /* Focused notes widget — subtle accent ring */
-.widget:has(.notes-ta:focus) {
+.widget[data-type="notes"]:focus-within {
   border-color: rgba(124,106,245,.45) !important;
   box-shadow: 0 0 0 2px rgba(124,106,245,.12), var(--shadow) !important;
 }
@@ -1329,6 +1344,12 @@ body.has-custom-bg .widget {
   border-color: var(--border);
   box-shadow: var(--shadow-sm);
 }
+/* Link widgets are an opaque .lw-fav card covering the whole widget; blurring
+   the backdrop behind them can never be seen. */
+body.has-custom-bg .widget[data-type="link"] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 body.has-custom-bg .center-modal,
 body.has-custom-bg .cal-modal {
   background: var(--surface);
@@ -1341,7 +1362,7 @@ body.has-custom-bg #header {
   -webkit-backdrop-filter: none;
 }
 /* Make body/html transparent so #bg-layer (z-index:-2) shows through */
-html:has(body.has-custom-bg),
+html.has-custom-bg,
 body.has-custom-bg {
   background: transparent !important;
 }
@@ -1424,22 +1445,6 @@ body.has-custom-bg {
 .w-lp-ring svg { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-90deg); }
 .wlp-track { fill: none; stroke: rgba(124,106,245,.2); }
 .wlp-fill { fill: none; stroke: var(--accent); stroke-linecap: round; }
-
-/* ═══════════════════════════════════════════
-   THEME TRANSITION OVERLAY
-   Painted over the entire page during switch.
-   pointer-events:none so nothing is blocked.
-   ═══════════════════════════════════════════ */
-#theme-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 99999;          /* covers full page for the old-theme flash, then shrinks away */
-  pointer-events: none;    /* never blocks clicks */
-  clip-path: circle(0px at 50% 50%);
-  opacity: 1;
-  /* transition is set dynamically in JS */
-  will-change: clip-path, opacity;
-}
 
 /* ═══════════════════════════════════════════
    WIDGET TYPE: CALENDAR TODO
@@ -2125,39 +2130,55 @@ body.has-custom-bg {
 }
 
 /* ═══════════════════════════════════════════
-   VIEW TRANSITIONS — circular ripple theme switch
-   Triggered by document.startViewTransition().
-   --vt-ox / --vt-oy are set by JS to the click origin.
+   THEME RIPPLE — decorative, non-blocking
+   The theme is applied synchronously; this overlay only plays a quick splash
+   at the click origin. It never captures pointer events, so the user can keep
+   clicking/dragging while it fades out.
    ═══════════════════════════════════════════ */
-
-/* Disable the default cross-fade */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
+#theme-ripple {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+#theme-ripple::before {
+  content: '';
+  position: absolute;
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 68%);
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+}
+#theme-ripple.run { display: block; }
+#theme-ripple.run::before {
+  animation: theme-ripple 620ms cubic-bezier(0.15, 0.5, 0.4, 1) forwards;
 }
 
-/* Old page stays frozen underneath */
-::view-transition-old(root) {
-  z-index: 1;
+@keyframes theme-ripple {
+  0%   { transform: translate(-50%, -50%) scale(0);   opacity: .35; }
+  100% { transform: translate(-50%, -50%) scale(420); opacity: 0; }
 }
 
-/* New page expands as a circle from the click origin */
-::view-transition-new(root) {
-  z-index: 2;
-  clip-path: circle(0px at var(--vt-ox, 50%) var(--vt-oy, 50%));
-  animation: vt-ripple-expand 2400ms cubic-bezier(0.15, 0.5, 0.4, 1) forwards;
-}
-
-@keyframes vt-ripple-expand {
-  0%   { clip-path: circle(0px at var(--vt-ox, 50%) var(--vt-oy, 50%)); }
-  100% { clip-path: circle(150vmax at var(--vt-ox, 50%) var(--vt-oy, 50%)); }
-}
-
-/* Respect reduced-motion */
+/* Respect reduced-motion for everything */
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-new(root) {
-    animation: none;
-    clip-path: none;
+  #theme-ripple { display: none; }
+  .widget.enter,
+  body.edit-mode .widget,
+  .lw-fav img,
+  .eng-fb-sm,
+  .cal-task-item.dragging {
+    animation: none !important;
+  }
+  #pure-overlay,
+  .widget,
+  #bg-layer,
+  #bg-overlay {
+    transition: none !important;
   }
 }

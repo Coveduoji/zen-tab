@@ -67,20 +67,23 @@ function initTopClock() {
   const hmEl   = document.getElementById('top-clock-hm');
   const dateEl = document.getElementById('top-clock-date');
   if (!hmEl) return;
+  let lastDate = '';
+  let lastHm = '';
   function tickTop() {
     const n = new Date();
     const h = String(n.getHours()).padStart(2,'0'), m = String(n.getMinutes()).padStart(2,'0'), s = String(n.getSeconds()).padStart(2,'0');
-    hmEl.textContent = pureMode ? `${h}:${m}:${s}` : `${h}:${m}`;
-    if (dateEl) dateEl.textContent = lang==='zh' ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日` : `${WD_EN[n.getDay()]}, ${MO_EN[n.getMonth()]} ${n.getDate()}`;
+    const hm = pureMode ? `${h}:${m}:${s}` : `${h}:${m}`;
+    if (hm !== lastHm) { hmEl.textContent = hm; lastHm = hm; }
+    if (dateEl) {
+      const ds = lang==='zh'
+        ? `${WD_ZH[n.getDay()]} · ${n.getMonth()+1}月${n.getDate()}日`
+        : `${WD_EN[n.getDay()]}, ${MO_EN[n.getMonth()]} ${n.getDate()}`;
+      if (ds !== lastDate) { dateEl.textContent = ds; lastDate = ds; }
+    }
   }
   tickTop();
-  let _clockId = setInterval(tickTop, 1000);
-  // Pause interval when tab is hidden; resume (with immediate tick) when visible again
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearInterval(_clockId); _clockId = null; }
-    else { tickTop(); _clockId = setInterval(tickTop, 1000); }
-  });
-  window.addEventListener('beforeunload', () => clearInterval(_clockId), { once: true });
+  // Shared ticker; the top clock always stays active (pure mode shows seconds).
+  onSecond(tickTop);
 }
 
 function setLang(l) {
@@ -120,7 +123,7 @@ function initPanels() {
         const url = normalizeUrl(saved.url); wdata.config.name=saved.name; wdata.config.url=url;
         if (saved.emoji) wdata.config.emoji=saved.emoji; else delete wdata.config.emoji;
         if (saved.customImg) wdata.config.customImg=saved.customImg; else delete wdata.config.customImg;
-        saveState(); renderAll(); toast(t('link_saved'), 'ok');
+        saveState(); renderWidget(wdata.id); toast(t('link_saved'), 'ok');
       }, true, wdata.id); return;
     }
     if (wdata.type === 'notes') {
@@ -134,10 +137,8 @@ function initPanels() {
   });
   document.getElementById('ctx-front').addEventListener('click', () => {
     const idx = state.widgets.findIndex(w => w.id === _ctxWidgetId); closeCtxMenu(); if (idx < 0) return;
-    const [wdata] = state.widgets.splice(idx, 1); wdata.y=0; wdata.x=0;
-    const slot = findFreeSlot(wdata.w, wdata.h, state.widgets); wdata.x=slot.x; wdata.y=slot.y;
+    const [wdata] = state.widgets.splice(idx, 1);
     state.widgets.unshift(wdata);
-    if (state.settings.compactMode !== false) compact(state.widgets);
     debouncedSaveState(); positionAll();
   });
   document.getElementById('ctx-del').addEventListener('click', () => {

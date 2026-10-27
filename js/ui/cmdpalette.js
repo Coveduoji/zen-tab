@@ -7,8 +7,6 @@ function getCmds() {
     { id:'st', get n(){return t('cmd_settings');}, get h(){return t('cmd_settings_h');}, ico:'⚙', fn:()=>{closeCmd();openSettings();} },
     { id:'fs', get n(){return t('cmd_focus_search');}, get h(){return t('cmd_fs_h');}, ico:'🔍', fn:()=>{closeCmd();document.getElementById('search-input').focus();} },
     { id:'em', get n(){return t('cmd_edit_mode');}, get h(){return t('cmd_em_h');}, ico:'✏️', fn:()=>{closeCmd();editMode?exitEditMode():enterEditMode();} },
-    { id:'ty', get n(){return t('cmd_tidy');}, get h(){return t('cmd_tidy_h');}, ico:'🧹',
-      fn(){closeCmd();tidyLayout(state.widgets);compact(state.widgets);debouncedSaveState();positionAll();toast(lang==='zh'?'布局已整理':'Layout tidied','ok');} },
   ];
   CATALOG.forEach(item => {
     const d = REG[item.type]; if (!d) return;
@@ -20,8 +18,7 @@ function getCmds() {
       fn() {
         closeCmd();
         const r = SIZE_RULES[item.type]||{defW:2,defH:2};
-        const slot = findFreeSlot(r.defW, r.defH, state.widgets);
-        addWidget({id:genId(item.type), type:item.type, x:slot.x, y:slot.y, w:r.defW, h:r.defH, config:{}});
+        addWidget({id:genId(item.type), type:item.type, w:r.defW, h:r.defH, config:{}});
         toast(t('widget_added',`${d.icon} ${d.name}`),'ok');
       },
     });

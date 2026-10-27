@@ -2,37 +2,51 @@
    WIDGET INSTANCE MANAGER
    ═══════════════════════════════════════════════════════ */
 
-// Single pair of document-level listeners shared by all widgets (drag + resize).
-// Each mousedown registers its own handlers; mouseup clears them automatically.
-let _docMoveH = null, _docUpH = null;
-document.addEventListener('mousemove', e => _docMoveH?.(e));
-document.addEventListener('mouseup',   e => { _docUpH?.(e); _docMoveH = null; _docUpH = null; });
-
-function saveWCfg(id, cfg) {
+function saveWCfg(id, cfg, useDebounce = false) {
   const w = state.widgets.find(w=>w.id===id);
-  if (w) { w.config=cfg; saveState(); }
+  if (w) {
+    w.config = cfg;
+    if (useDebounce) debouncedSaveState();
+    else saveState();
+  }
 }
 
-function makeWidget(wdata, layoutOverrides) {
+// Targets that own their pointer interaction; a widget drag must not start
+// when one of these is the actual target. This filter is required because a
+// child's `mousedown` stopPropagation does not stop `pointerdown` bubbling.
+const NO_DRAG_SELECTOR = 'input, textarea, button, select, a, [contenteditable], [draggable="true"], .rh, .cal-task-item, .cal-add-row';
+
+function makeWidget(wdata, layoutOverrides, geom, pos) {
   const def = REG[wdata.type];
   if (!def) return null;
-  clamp(wdata);
-  const px = wPxResponsive(wdata, layoutOverrides);
+  const g = geom || readGeom();
+  clampSize(wdata, g.vc);
+  if (!pos) {
+    const layout = computeDenseLayout(state.widgets, g);
+    pos = layout.get(wdata.id) || { x: 0, y: 0, w: Math.min(wdata.w, g.vc), h: wdata.h };
+  }
+  const px = wPx(wdata, pos, g);
 
   const el = document.createElement('div');
-  el.className = 'widget';
+  el.className = 'widget enter' + (typeof pureMode !== 'undefined' && pureMode ? ' pure-hidden' : '');
   el.dataset.id = wdata.id;
   el.dataset.type = wdata.type;
-  el.style.cssText = `left:${px.left}px;top:${px.top}px;width:${px.width}px;height:${px.height}px;z-index:${10+wdata.y};`;
+  el.style.cssText = `left:${px.left}px;top:${px.top}px;width:${px.width}px;height:${px.height}px;z-index:10;`;
+
+  // Remove the one-shot entrance class on animationend (plus a fallback for
+  // reduced-motion, where no animation runs). Keeping it off .widget means a
+  // drag or an edit-mode exit can never replay the entrance animation.
+  const clearEnter = () => el.classList.remove('enter');
+  el.addEventListener('animationend', clearEnter, { once: true });
+  setTimeout(clearEnter, 600);
 
   const isLink = wdata.type === 'link';
   const titleText = isLink ? (wdata.config.name || def.name) : def.name;
 
   const wR = 28; const wC = 2*Math.PI*wR;
-  // Delete/edit are right-click-menu-only (openCtxMenu below) — no inline
-  // badge/button on the widget itself. .w-controls stays for non-link types
-  // only, since notes.js still injects its font-size buttons into it.
+  const delLabel = t('del_btn');
   el.innerHTML = `
+    <button class="w-delete" type="button" title="${esc(delLabel)}" aria-label="${esc(delLabel)}">×</button>
     ${isLink
       ? ''
       : `<div class="w-header">
@@ -55,8 +69,19 @@ function makeWidget(wdata, layoutOverrides) {
   el.addEventListener('mouseenter', () => { if (!editMode) el.querySelector('.w-controls')?.style.setProperty('opacity','1'); });
   el.addEventListener('mouseleave', () => { el.querySelector('.w-controls')?.style.setProperty('opacity','0'); });
 
-  // Right-click context menu — sole entry point for edit/delete
+  // Right-click context menu — edit/delete (delete also has a corner button
+  // in edit mode, matching the documented interaction).
   el.addEventListener('contextmenu', e => openCtxMenu(e, wdata.id));
+
+  el.querySelector('.w-delete')?.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    confirm2(t('del_confirm_t'), t('del_confirm_s'), t('del_btn'), ok => {
+      if (!ok) return;
+      removeWidget(wdata.id);
+      toast(t('widget_removed'), '');
+    });
+  });
 
   // Render body
   const body = el.querySelector('.w-body');
@@ -78,283 +103,360 @@ function makeWidget(wdata, layoutOverrides) {
   }
 
   /* ────────── WIDGET LONG-PRESS → enter edit mode ────────── */
-  {
-    const WLP_DUR = 650;
-    let wlpTimer = null, wlpStart = null, wlpX = 0, wlpY = 0;
-    const ringEl = document.getElementById(`wlpr-${wdata.id}`);
-    const fillEl = document.getElementById(`wlpf-${wdata.id}`);
-    const WC_VAL = 2 * Math.PI * 28;
+  // Same as the canvas gesture: no ring for a normal click; the ring appears
+  // only after a deliberate hold.
+  const WLP_DELAY = 180;
+  const WLP_DUR = 500;
+  let wlpTimer = null, wlpDelayTimer = null, wlpStart = null, wlpX = 0, wlpY = 0;
+  const ringEl = el.querySelector('.w-lp-ring');
+  const fillEl = el.querySelector('.wlp-fill');
+  const WC_VAL = 2 * Math.PI * 28;
 
-    function startWLP(e) {
-      if (editMode) return;
-      if (e.target.closest('.rh')) return;
-      if (e.button !== 0 && e.type === 'mousedown') return;
-      wlpX = e.clientX; wlpY = e.clientY;
+  function stopWLP() {
+    clearTimeout(wlpDelayTimer); wlpDelayTimer = null;
+    if (wlpTimer) { cancelAnimationFrame(wlpTimer); wlpTimer = null; }
+    if (ringEl) { ringEl.style.display='none'; if(fillEl){fillEl.style.opacity='0';} }
+    wlpStart = null;
+  }
+
+  function startWLP(e) {
+    if (editMode) return;
+    if (e.button !== 0) return;
+    if (e.target.closest(NO_DRAG_SELECTOR)) return;
+    wlpX = e.clientX; wlpY = e.clientY;
+    clearTimeout(wlpDelayTimer);
+    wlpDelayTimer = setTimeout(() => {
+      wlpDelayTimer = null;
+      if (editMode || dragPointer === null) return;
       wlpStart = null;
       if (ringEl) { ringEl.style.display='block'; fillEl.style.opacity='1'; fillEl.style.strokeDashoffset=WC_VAL; }
       function frame(ts) {
+        if (dragPointer === null) return;
         if (!wlpStart) wlpStart = ts;
         const pct = Math.min(1, (ts - wlpStart) / WLP_DUR);
         if (fillEl) fillEl.style.strokeDashoffset = WC_VAL * (1 - pct);
         if (pct < 1 && wlpTimer) wlpTimer = requestAnimationFrame(frame);
-        else if (pct >= 1) { stopWLP(); enterEditMode(); }
+        else if (pct >= 1) {
+          stopWLP();
+          // Release the still-held pointer gesture so moving the mouse after
+          // the long-press doesn't immediately start a reorder.
+          endDragGesture(dragPointer);
+          enterEditMode();
+        }
       }
       wlpTimer = requestAnimationFrame(frame);
-    }
-    function stopWLP() {
-      if (wlpTimer) { cancelAnimationFrame(wlpTimer); wlpTimer = null; }
-      if (ringEl) { ringEl.style.display='none'; if(fillEl){fillEl.style.opacity='0';} }
-      wlpStart = null;
-    }
-    el.addEventListener('mousedown', startWLP);
-    el.addEventListener('mouseup',   stopWLP);
-    el.addEventListener('mouseleave',stopWLP);
-    // Cancel long-press if user starts dragging (>5px)
-    el.addEventListener('mousemove', e => {
-      if (wlpTimer && (Math.abs(e.clientX-wlpX)+Math.abs(e.clientY-wlpY) > 5)) stopWLP();
-    });
+    }, WLP_DELAY);
   }
 
-  /* ────────── DRAG — 6px threshold, click/drag strictly separated ────────── */
-  let dragging=false, dragStarted=false, offX=0, offY=0, ghost=null, origX=0, origY=0, downX=0, downY=0;
-  // Grid geometry + canvas rect cached once per drag session (mousedown) —
-  // they don't change mid-drag, so avoid a forced-reflow clientWidth read
-  // on every mousemove. Pending pointer events are coalesced into a single
-  // rAF-batched write per frame instead of writing styles synchronously
-  // on each mousemove.
-  let dragVc=0, dragColW=0, dragGw=0, dragRowH=0, dragCanvasRect=null;
-  let dragRAF=null, pendingMoveEvent=null;
+  /* ────────── REORDER DRAG (edit mode) ──────────
+     The widget follows the pointer with `translate`; a dashed drop marker
+     shows where it will land. On release only the array order changes; every
+     position is then recomputed deterministically from that order. */
+  let dragPointer = null, dragging = false, dragStarted = false;
+  let downX = 0, downY = 0;
+  let dragGeom = null, dragRAF = 0, pendingMove = null, dragCanvasRect = null;
+  let dragTargetIndex = -1;
 
-  el.addEventListener('mousedown', e => {
-    if (e.target.closest('.rh')) return;
+  function _dropMarker() { return document.getElementById('drop-marker'); }
+
+  function hideDropMarker() {
+    const m = _dropMarker();
+    if (m) { m.classList.remove('show'); m.style.display = 'none'; }
+  }
+
+  function endDragGesture(pointerId) {
+    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = 0; }
+    pendingMove = null;
+    if (pointerId != null) {
+      try { el.releasePointerCapture(pointerId); } catch (_) {}
+    }
+    dragPointer = null;
+    dragTargetIndex = -1;
+  }
+
+  function beginDrag(e) {
     if (e.button !== 0) return;
-    e.preventDefault();   // always preventDefault — blocks <a> native nav for all widget types
-    e.stopPropagation();
-
+    if (e.target.closest(NO_DRAG_SELECTOR)) return;
+    // Do not capture yet: capturing on pointerdown retargets the compatibility
+    // click, which would break day cells / weather body / pomodoro time clicks.
+    dragPointer = e.pointerId;
     dragging = false; dragStarted = false;
-    el._wasDragged = false;   // reset on every fresh press
-    origX = wdata.x; origY = wdata.y;
+    el._wasDragged = false;
     downX = e.clientX; downY = e.clientY;
-    const rect = el.getBoundingClientRect();
-    offX = e.clientX - rect.left;
-    offY = e.clientY - rect.top;
-    dragVc = visibleCols();
-    dragColW = cw();
-    dragGw = gw();
-    dragRowH = rowH();
+    dragGeom = readGeom();
     dragCanvasRect = document.getElementById('grid-canvas').getBoundingClientRect();
-    _docMoveH = onMove; _docUpH = onUp;
-  });
+    startWLP(e);
+  }
 
-  function onMove(e) {
-    if (downX === 0 && downY === 0) return;
-    pendingMoveEvent = e;
+  function onPointerMove(e) {
+    if (e.pointerId !== dragPointer) return;
+    if ((wlpDelayTimer || wlpTimer) && (Math.abs(e.clientX-wlpX) + Math.abs(e.clientY-wlpY) > 5)) stopWLP();
+    pendingMove = e;
     if (dragRAF) return;
     dragRAF = requestAnimationFrame(processMove);
   }
 
-  function processMove() {
-    dragRAF = null;
-    const e = pendingMoveEvent;
-    if (!e) return;
+  // Nearest-center insertion heuristic: insert before/after the widget whose
+  // center is closest to the pointer, comparing reading order within a row.
+  function _findInsertIndex(pointerX, pointerY, others) {
+    const currentLayout = computeDenseLayout(state.widgets, dragGeom);
+    let best = others.length;
+    let bestDist = Infinity;
+    for (let i = 0; i < others.length; i++) {
+      const pos = currentLayout.get(others[i].id);
+      if (!pos) continue;
+      const px = wPx(others[i], pos, dragGeom);
+      const cx = px.left + px.width / 2;
+      const cy = px.top + px.height / 2;
+      const d = (pointerX - cx) ** 2 + (pointerY - cy) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        // Bias toward "after" when the pointer is anywhere near the center,
+        // so dropping onto a widget reliably moves the dragged item past it.
+        const before = pointerY < cy - px.height * 0.2 ||
+          (Math.abs(pointerY - cy) <= px.height * 0.5 && pointerX < cx - px.width * 0.2);
+        best = i + (before ? 0 : 1);
+      }
+    }
+    return Math.max(0, Math.min(others.length, best));
+  }
 
+  function _updateDropTarget(e) {
+    const pointerX = e.clientX - dragCanvasRect.left;
+    const pointerY = e.clientY - dragCanvasRect.top;
+    const others = state.widgets.filter(w => w.id !== wdata.id);
+    const target = _findInsertIndex(pointerX, pointerY, others);
+    dragTargetIndex = target;
+
+    // Show where the widget will land in the new order.
+    const next = others.slice();
+    next.splice(target, 0, wdata);
+    const nextLayout = computeDenseLayout(next, dragGeom);
+    const slot = nextLayout.get(wdata.id);
+    const marker = _dropMarker();
+    if (marker && slot) {
+      const px = wPx(wdata, slot, dragGeom);
+      marker.style.display = 'block';
+      marker.classList.add('show');
+      marker.style.left = px.left + 'px';
+      marker.style.top = px.top + 'px';
+      marker.style.width = px.width + 'px';
+      marker.style.height = px.height + 'px';
+    }
+  }
+
+  function processMove() {
+    dragRAF = 0;
+    const e = pendingMove;
+    if (!e || e.pointerId !== dragPointer) return;
     const dx = e.clientX - downX, dy = e.clientY - downY;
 
     if (!dragStarted) {
-      if (Math.sqrt(dx*dx + dy*dy) < 6) return;
+      if (dx*dx + dy*dy < 36) return;
       dragStarted = true;
+      el._wasDragged = true;
+      stopWLP();
       dragging = true;
-      el._wasDragged = true;   // set as soon as threshold crossed
+      el.classList.remove('enter');
       el.classList.add('dragging');
-      el.style.transition = 'none';
-      el.style.zIndex = 500;
       document.body.classList.add('any-dragging');
-
-      ghost = document.getElementById('drop-ghost');
-      ghost.style.display = 'block';
-      ghost.className = 'drop-ghost valid';
-      const curPx = wPxResponsive(wdata, null, { colW: dragColW, vc: dragVc, rowH: dragRowH });
-      ghost.style.cssText = `display:block;left:${curPx.left}px;top:${curPx.top}px;width:${curPx.width}px;height:${curPx.height}px;`;
+      // Capture only once this is a real drag, so clicks keep their target.
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
     }
-
     if (!dragging) return;
-    let nx = e.clientX - dragCanvasRect.left - offX;
-    let ny = e.clientY - dragCanvasRect.top  - offY;
 
-    const vc = dragVc, colW = dragColW;
-    const pw = Math.min(wdata.w, vc) * colW + (Math.min(wdata.w,vc)-1)*GAP;
-    const ph = (wdata.type === 'link' || wdata.type === 'pomodoro') ? pw : wdata.h * dragRowH + (wdata.h-1)*GAP;
-    nx = Math.max(0, Math.min(dragGw - pw, nx));
-    ny = Math.max(0, ny);
-
-    el.style.left = nx + 'px';
-    el.style.top  = ny + 'px';
-
-    // 两种模式都对齐网格格子，ghost 始终显示网格落点
-    // 用实际渲染宽度（不超过 vc）计算 snap 上限
-    const renderW = Math.min(wdata.w, vc);
-    const snapCol = Math.max(0, Math.min(vc - renderW, Math.round(nx/(colW+GAP))));
-    const snapRow = Math.max(0, Math.round(ny/(dragRowH+GAP)));
-    const ghostRect = { id:'__ghost__', x:snapCol, y:snapRow, w:renderW, h:wdata.h };
-    const hits = getCollisions(ghostRect, wdata.id, state.widgets);
-    ghost.className = 'drop-ghost ' + (hits.length===0 ? 'valid' : 'invalid');
-    const gpx = { left: snapCol*(colW+GAP), top: snapRow*(dragRowH+GAP), width: pw, height: ph };
-    ghost.style.left   = gpx.left   + 'px';
-    ghost.style.top    = gpx.top    + 'px';
-    ghost.style.width  = gpx.width  + 'px';
-    ghost.style.height = gpx.height + 'px';
-    wdata._snapX = snapCol; wdata._snapY = snapRow;
+    el.style.translate = `${dx}px ${dy}px`;
+    _updateDropTarget(e);
   }
 
-  function onUp(e) {
-    if (downX === 0 && downY === 0) return;
-    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
+  function _applyOrder(target) {
+    const others = state.widgets.filter(w => w.id !== wdata.id);
+    const next = others.slice();
+    next.splice(Math.max(0, Math.min(others.length, target)), 0, wdata);
+    state.widgets = next;
+  }
 
-    // Final distance check: even if mousemove never fired (fast tap+release),
-    // measure here and mark as dragged if moved beyond threshold.
-    const totalDist = Math.sqrt(
-      Math.pow(e.clientX - downX, 2) + Math.pow(e.clientY - downY, 2)
-    );
+  function endDrag(e) {
+    if (e.pointerId !== dragPointer) return;
+    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = 0; }
+    stopWLP();
+
+    const totalDist = Math.hypot(e.clientX - downX, e.clientY - downY);
     if (totalDist >= 6) el._wasDragged = true;
+    const target = dragTargetIndex;
 
-    downX = 0; downY = 0;
+    endDragGesture(e.pointerId);
 
     if (!dragging) {
-      dragStarted = false;
-      // Not a drag — this is a clean click.
-      // For link widgets: fire the navigation now (since mousedown did preventDefault)
+      // Clean click. Link widgets navigate here because we don't prevent the
+      // compatibility click.
       if (isLink && !el._wasDragged && !editMode) {
         window.open(wdata.config.url, '_blank', 'noopener,noreferrer');
       }
-      el._wasDragged = false;
+      // A swipe in normal mode has no action, but must suppress the late
+      // click (weather/todo/pomodoro handlers check _wasDragged).
+      if (el._wasDragged) setTimeout(() => { el._wasDragged = false; }, 300);
+      else el._wasDragged = false;
+      dragStarted = false;
       return;
     }
 
     dragging = false; dragStarted = false;
-    el.classList.remove('dragging');
-    // Suppress transition on the dragged element so it snaps instantly to the
-    // grid position without an animation "bounce". Other widgets pushed by
-    // compact() keep their transitions and slide smoothly.
-    el.style.transition = 'none';
-    document.body.classList.remove('any-dragging');
+    hideDropMarker();
+    el.style.translate = '';
 
-    if (ghost) { ghost.style.display = 'none'; ghost = null; }
-
-    // Keep _wasDragged=true briefly to suppress any late-firing click event
-    setTimeout(() => { el._wasDragged = false; }, 300);
-
-    const newX = wdata._snapX ?? origX;
-    const newY = wdata._snapY ?? origY;
-    wdata.x = newX; wdata.y = newY;
-    delete wdata._snapX; delete wdata._snapY;
-    // Restore the row-based stacking order (same formula makeWidget() uses
-    // at creation) instead of clearing z-index — otherwise a widget that
-    // was just dragged permanently falls behind never-dragged siblings.
-    el.style.zIndex = 10 + wdata.y;
-
-    pushDown(wdata, state.widgets);
-    if (state.settings.compactMode !== false) compact(state.widgets);
-    clamp(wdata, dragVc);
+    _applyOrder(target < 0 ? state.widgets.indexOf(wdata) : target);
     debouncedSaveState();
-    positionAll(); // only update CSS positions — no DOM teardown → no flash
+
+    // While `.dragging` is still on (its transition only covers box-shadow),
+    // snap the element to the new slot so it doesn't animate from the old
+    // position. Other widgets then animate to their new slots.
+    const geom = readGeom();
+    const layout = computeDenseLayout(state.widgets, geom);
+    const pos = layout.get(wdata.id);
+    if (pos) {
+      const px = wPx(wdata, pos, geom);
+      el.style.left = px.left + 'px'; el.style.top = px.top + 'px';
+      el.style.width = px.width + 'px'; el.style.height = px.height + 'px';
+      el.style.zIndex = 10;
+    }
+    document.body.classList.remove('any-dragging');
+    el.classList.remove('dragging');
+    setTimeout(() => { el._wasDragged = false; }, 300);
+    positionAll();
   }
 
-  // _unbindDrag clears singleton handlers (if this widget owns them) and resize handles
-  el._unbindDrag = () => {
-    if (_docMoveH === onMove) { _docMoveH = null; _docUpH = null; }
-    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
-    el.querySelectorAll('.rh').forEach(h => h._unbind?.());
-  };
+  function cancelDrag(e) {
+    if (e.pointerId !== dragPointer) return;
+    stopWLP();
+    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = 0; }
+    endDragGesture(e.pointerId);
+    if (dragging) {
+      dragging = false; dragStarted = false;
+      el.classList.remove('dragging');
+      el.style.translate = '';
+      document.body.classList.remove('any-dragging');
+      hideDropMarker();
+      positionAll();
+    }
+    el._wasDragged = false;
+  }
 
-  /* ────────── RESIZE — single bottom-right handle, free resize ────────── */
+  el.addEventListener('pointerdown', beginDrag);
+  el.addEventListener('pointermove', onPointerMove);
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', cancelDrag);
+  el.addEventListener('lostpointercapture', e => { if (e.pointerId === dragPointer) cancelDrag(e); });
+  el.addEventListener('pointerleave', () => {
+    if (dragPointer != null && !dragging) {
+      stopWLP();
+      endDragGesture(dragPointer);
+      dragStarted = false;
+      if (el._wasDragged) setTimeout(() => { el._wasDragged = false; }, 300);
+    }
+  });
+
+  /* ────────── RESIZE — bottom-right handle, grid-snapped ────────── */
   el.querySelectorAll('.rh').forEach(handle => {
-    let resizing=false, rsX=0, rsY=0, rsW=0, rsH=0;
-    // Same idea as drag: cache grid geometry once per resize session and
-    // batch style writes into a single rAF per frame.
-    let rsGeom=null, rsRAF=null, rsPendingEvent=null;
+    let resizePointer = null;
+    let rsX = 0, rsY = 0, rsW = 0, rsH = 0, rsLeft = 0, rsTop = 0, rsColX = 0;
+    let rsGeom = null, rsRAF = 0, rsPending = null;
 
-    handle.addEventListener('mousedown', e => {
-      if (!editMode) return;
-      e.preventDefault(); e.stopPropagation();
-      resizing=true; rsX=e.clientX; rsY=e.clientY;
-      rsW=wdata.w; rsH=wdata.h;
-      rsGeom = { colW: cw(), vc: visibleCols(), rowH: rowH() };
-      el.style.transition='none';
-      _docMoveH = onResizeMove; _docUpH = onResizeUp;
+    function endResize(pointerId) {
+      if (rsRAF) { cancelAnimationFrame(rsRAF); rsRAF = 0; }
+      rsPending = null;
+      if (pointerId != null) {
+        try { handle.releasePointerCapture(pointerId); } catch (_) {}
+      }
+      resizePointer = null;
+    }
+
+    handle.addEventListener('pointerdown', e => {
+      if (!editMode || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      resizePointer = e.pointerId;
+      rsGeom = readGeom();
+      rsX = e.clientX; rsY = e.clientY;
+      rsW = wdata.w; rsH = wdata.h;
+      rsLeft = el.offsetLeft; rsTop = el.offsetTop;
+      rsColX = Math.round(rsLeft / (rsGeom.colW + GAP));
+      el.classList.add('resizing');
+      document.body.classList.add('resizing');
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     });
 
-    function onResizeMove(e) {
-      if (!resizing) return;
-      rsPendingEvent = e;
+    handle.addEventListener('pointermove', e => {
+      if (e.pointerId !== resizePointer) return;
+      rsPending = e;
       if (rsRAF) return;
       rsRAF = requestAnimationFrame(processResizeMove);
-    }
+    });
 
     function processResizeMove() {
-      rsRAF = null;
-      const e = rsPendingEvent;
-      if (!e || !resizing) return;
-      const colW = rsGeom.colW;
-      const dCol = Math.round((e.clientX-rsX)/(colW+GAP));
-      const dRow = Math.round((e.clientY-rsY)/(rsGeom.rowH+GAP));
-      // Bound to this session's cached visible-column count (rsGeom.vc), not
-      // the full model width — resizing a widget past what's actually on
-      // screen is exactly what let render's display-only clamp stack it on
-      // top of something else (see tidyLayout's history).
-      const rules = SIZE_RULES[wdata.type]||{minW:1,minH:1,maxW:rsGeom.vc,maxH:20};
+      rsRAF = 0;
+      const e = rsPending;
+      if (!e || e.pointerId !== resizePointer) return;
 
-      wdata.w = Math.max(rules.minW, Math.min(rules.maxW, rsGeom.vc-wdata.x, rsW+dCol));
-      wdata.h = Math.max(rules.minH, Math.min(rules.maxH, rsH+dRow));
-
-      // Aspect-locked types (link/pomodoro square, weather/clock 3:2, ...):
-      // width drives the ratio since this is the only (bottom-right) handle.
+      const dCol = Math.round((e.clientX - rsX) / (rsGeom.colW + GAP));
+      const dRow = Math.round((e.clientY - rsY) / (rsGeom.rowH + GAP));
+      const rules = SIZE_RULES[wdata.type] || { minW:1, minH:1, maxW:rsGeom.vc, maxH:20 };
+      const maxW = Math.min(rules.maxW, rsGeom.vc - rsColX);
+      const newW = Math.max(rules.minW, Math.min(maxW, rsW + dCol));
+      let newH = Math.max(rules.minH, Math.min(rules.maxH, rsH + dRow));
       const ratio = ASPECT_LOCK[wdata.type];
-      if (ratio) {
-        const newW = Math.max(rules.minW, Math.min(rules.maxW, wdata.w));
-        wdata.w = newW;
-        wdata.h = Math.max(rules.minH, Math.min(rules.maxH, Math.round(newW / ratio)));
-      }
+      if (ratio) newH = Math.max(rules.minH, Math.min(rules.maxH, Math.round(newW / ratio)));
+      wdata.w = newW;
+      wdata.h = newH;
 
-      const px = wPxResponsive(wdata, null, rsGeom);
-      el.style.left=px.left+'px'; el.style.top=px.top+'px';
-      el.style.width=px.width+'px'; el.style.height=px.height+'px';
+      // Keep the top-left fixed while dragging the handle; the dense layout
+      // re-flows every widget (and fills the freed space) on release.
+      const cols = Math.min(wdata.w, rsGeom.vc);
+      const px = wPx(wdata, {
+        x: rsColX, y: rsTop, w: cols, h: itemHeight(wdata, cols, rsGeom),
+      }, rsGeom);
+      el.style.left = rsLeft + 'px';
+      el.style.top = rsTop + 'px';
+      el.style.width = px.width + 'px';
+      el.style.height = px.height + 'px';
     }
 
-    function onResizeUp() {
-      if (!resizing) return; resizing=false;
-      if (rsRAF) { cancelAnimationFrame(rsRAF); rsRAF = null; }
-      el.style.transition='';
-      pushDown(wdata, state.widgets);
-      if (state.settings.compactMode !== false) compact(state.widgets);
-      clamp(wdata, rsGeom.vc); debouncedSaveState();
-      positionAll(); // resize never adds/removes widgets — no need for a full renderAll()
+    function finishResize(e) {
+      if (e.pointerId !== resizePointer) return;
+      const vc = rsGeom ? rsGeom.vc : undefined;
+      endResize(e.pointerId);
+      el.classList.remove('resizing');
+      document.body.classList.remove('resizing');
+      clampSize(wdata, vc);
+      debouncedSaveState();
+      positionAll();
     }
 
-    handle._unbind = () => {
-      if (_docMoveH === onResizeMove) { _docMoveH = null; _docUpH = null; }
-      if (rsRAF) { cancelAnimationFrame(rsRAF); rsRAF = null; }
-    };
+    handle.addEventListener('pointerup', finishResize);
+    handle.addEventListener('pointercancel', finishResize);
+    handle._unbind = () => endResize(resizePointer);
   });
+
+  // _unbindDrag clears gesture state when the widget is removed.
+  el._unbindDrag = () => {
+    stopWLP();
+    endDragGesture(dragPointer);
+    hideDropMarker();
+    el.querySelectorAll('.rh').forEach(h => h._unbind?.());
+  };
 
   return el;
 }
 
 function addWidget(wdata) {
-  clamp(wdata);
-  // Ensure no collision before adding
-  const hits = getCollisions(wdata, wdata.id, state.widgets);
-  if (hits.length > 0) {
-    const slot = findFreeSlot(wdata.w, wdata.h, state.widgets);
-    wdata.x = slot.x; wdata.y = slot.y;
-  }
-  state.widgets.push(wdata);
-  if (state.settings.compactMode !== false) compact(state.widgets);
+  const geom = readGeom();
+  clampSize(wdata, geom.vc);
+  state.widgets.push(wdata); // order controls placement; new widgets go last
   saveState();
 
-  // Only the new widget needs a fresh DOM node — everything else that
-  // compact() may have shifted just needs repositioning, not a full rebuild.
+  const layout = computeDenseLayout(state.widgets, geom);
   const canvas = document.getElementById('grid-canvas');
-  const el = makeWidget(wdata, null);
+  const el = makeWidget(wdata, null, geom, layout.get(wdata.id));
   if (el) canvas.appendChild(el);
   positionAll();
   updateEmptyHint();
@@ -368,30 +470,42 @@ function removeWidget(id) {
   // Clean up any stored custom image for this link widget
   localStorage.removeItem('dash_limg_' + id);
   state.widgets = state.widgets.filter(w=>w.id!==id);
-  if (state.settings.compactMode !== false) compact(state.widgets);
   saveState();
+  positionAll();
   updateEmptyHint();
+}
+
+// Rebuild one widget in place (link edit, etc.) without destroying/touching
+// every other widget. Keeps iframes loaded, pomodoro running, calendar view.
+function renderWidget(id) {
+  const wdata = state.widgets.find(w => w.id === id);
+  if (!wdata) return;
+  const canvas = document.getElementById('grid-canvas');
+  const old = canvas.querySelector(`.widget[data-id="${id}"]`);
+  const geom = readGeom();
+  const layout = computeDenseLayout(state.widgets, geom);
+  cleanupWidget(id);
+  if (old) { old._unbindDrag?.(); old.remove(); }
+  const el = makeWidget(wdata, null, geom, layout.get(id));
+  if (el) canvas.appendChild(el);
+  positionAll();
 }
 
 function renderAll() {
   const canvas = document.getElementById('grid-canvas');
   canvas.querySelectorAll('.widget').forEach(el=>{ cleanupWidget(el.dataset.id); el._unbindDrag?.(); el.remove(); });
 
-  // computeResponsiveLayout() always returns null (reserved for future responsive mode)
-  const layoutOverrides = null;
+  const geom = readGeom();
+  const layout = computeDenseLayout(state.widgets, geom);
 
-  // Compute canvas height from the effective (possibly overridden) layout
-  let maxRow = 0;
-  state.widgets.forEach(w => {
-    const ov = layoutOverrides && layoutOverrides[w.id];
-    const effY = ov ? ov.y : w.y;
-    maxRow = Math.max(maxRow, effY + w.h);
-  });
-  canvas.style.minHeight = Math.max(ry(maxRow+2), document.getElementById('grid-outer').clientHeight-40) + 'px';
+  let bottom = 0;
+  for (const pos of layout.values()) bottom = Math.max(bottom, pos.y + pos.h);
+  const outer = document.getElementById('grid-outer');
+  canvas.style.minHeight = Math.max(bottom + GAP * 2, outer.clientHeight - 40) + 'px';
 
   const frag = document.createDocumentFragment();
   state.widgets.forEach(w => {
-    const el = makeWidget(w, layoutOverrides);
+    const el = makeWidget(w, null, geom, layout.get(w.id));
     if (el) frag.appendChild(el);
   });
   canvas.appendChild(frag);
@@ -407,48 +521,61 @@ function updateEmptyHint() {
  * positionAll — update only CSS positions of existing widget elements.
  * No DOM teardown/rebuild → no flash. Used after drag-drop.
  */
+let _positionRAF = 0;
 function positionAll() {
-  const canvas = document.getElementById('grid-canvas');
-  const layoutOverrides = null;
+  if (_positionRAF) return;
+  _positionRAF = requestAnimationFrame(() => {
+    _positionRAF = 0;
+    const canvas = document.getElementById('grid-canvas');
+    const geom = readGeom();
+    const outer = document.getElementById('grid-outer');
 
-  // Recalculate canvas height (read phase — before any writes)
-  let maxRow = 0;
-  state.widgets.forEach(w => {
-    const ov = layoutOverrides && layoutOverrides[w.id];
-    const effY = ov ? ov.y : w.y;
-    maxRow = Math.max(maxRow, effY + w.h);
-  });
+    // Read phase: one element map, one outer-height read, all rectangles.
+    const els = new Map([...canvas.querySelectorAll('.widget')].map(el => [el.dataset.id, el]));
+    const layout = computeDenseLayout(state.widgets, geom);
+    let bottom = 0;
+    for (const pos of layout.values()) bottom = Math.max(bottom, pos.y + pos.h);
+    const minHeight = Math.max(bottom + GAP * 2, outer.clientHeight - 40);
+    const placements = [];
+    state.widgets.forEach((w, index) => {
+      const pos = layout.get(w.id);
+      const el = els.get(w.id);
+      if (!pos || !el || el.classList.contains('dragging') || el.classList.contains('resizing')) return;
+      placements.push({ el, px: wPx(w, pos, geom), z: 10 + index });
+    });
 
-  // Batch all DOM writes in a single rAF to avoid layout thrashing
-  requestAnimationFrame(() => {
-    canvas.style.minHeight = Math.max(ry(maxRow+2), document.getElementById('grid-outer').clientHeight-40) + 'px';
-    state.widgets.forEach(w => {
-      const el = canvas.querySelector(`.widget[data-id="${w.id}"]`);
-      if (!el || el.classList.contains('dragging')) return;
-      const px = wPxResponsive(w, layoutOverrides);
+    // Write phase: no layout reads once writes begin.
+    canvas.style.minHeight = minHeight + 'px';
+    for (const { el, px, z } of placements) {
       el.style.left   = px.left   + 'px';
       el.style.top    = px.top    + 'px';
       el.style.width  = px.width  + 'px';
       el.style.height = px.height + 'px';
-      // Keep stacking order in sync with the new row — otherwise a widget
-      // that moved to a different row keeps its old row's z-index and can
-      // render on top of/behind the wrong sibling while they slide past
-      // each other in this reflow's transition.
-      el.style.zIndex = 10 + w.y;
-    });
+      el.style.zIndex = z;
+    }
   });
 }
 
 // Reflow when #grid-outer's rendered size changes. A ResizeObserver on the
 // element itself (rather than a `window` "resize" listener) is what catches
-// browser page-zoom changes reliably — zooming resizes #grid-outer's actual
-// box, but doesn't consistently fire a window resize event, which used to
-// leave every widget positioned for the pre-zoom width: at a wider zoomed-in
-// render, that stale layout no longer fit and produced horizontal overflow.
+// browser page-zoom changes reliably.
 let resizeTimer;
+const _initialOuter = document.getElementById('grid-outer');
+let _lastGeom = { ...readGeom(), h: _initialOuter ? _initialOuter.clientHeight : 0 };
 function scheduleReflow() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { normalizeToVc(); buildGridBg(); positionAll(); }, 120);
+  resizeTimer = setTimeout(() => {
+    const geom = readGeom();
+    const outer = document.getElementById('grid-outer');
+    const h = outer ? outer.clientHeight : 0;
+    const colsChanged = geom.vc !== _lastGeom.vc;
+    if (geom.gw === _lastGeom.gw && !colsChanged && h === _lastGeom.h) return; // initial callback / no-op
+    _lastGeom = { ...geom, h };
+    document.body.classList.add('reflowing');
+    if (editMode) buildGridBg();
+    positionAll();
+    requestAnimationFrame(() => document.body.classList.remove('reflowing'));
+  }, 120);
 }
 window.addEventListener('resize', scheduleReflow);
 window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once: true });

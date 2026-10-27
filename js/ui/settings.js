@@ -34,13 +34,13 @@ function renderMarket(q='') {
       if (type==='embed') {
         closeMkt();
         showEmbedModal('', url=>{
-          const r=SIZE_RULES['embed']||{defW:5,defH:5}; const slot=findFreeSlot(r.defW,r.defH,state.widgets);
-          addWidget({id:genId('embed'),type:'embed',x:slot.x,y:slot.y,w:r.defW,h:r.defH,config:{url}});
+          const r=SIZE_RULES['embed']||{defW:5,defH:5};
+          addWidget({id:genId('embed'),type:'embed',w:r.defW,h:r.defH,config:{url}});
           toast(t('widget_added','🌐 '+t('w_embed')),'ok');
         }); return;
       }
-      const r=SIZE_RULES[type]||{defW:2,defH:2}; const slot=findFreeSlot(r.defW,r.defH,state.widgets);
-      addWidget({id:genId(type),type,x:slot.x,y:slot.y,w:r.defW,h:r.defH,config:{}});
+      const r=SIZE_RULES[type]||{defW:2,defH:2};
+      addWidget({id:genId(type),type,w:r.defW,h:r.defH,config:{}});
       closeMkt(); toast(t('widget_added',`${d.icon} ${d.name}`),'ok');
     });
   });
@@ -48,11 +48,11 @@ function renderMarket(q='') {
 
 function createQuickLink(prefill={}) {
   showLinkModal(prefill, saved=>{
-    const r=SIZE_RULES['link']; const slot=findFreeSlot(r.defW,r.defH,state.widgets);
+    const r=SIZE_RULES['link'];
     const cfg={name:saved.name,url:saved.url};
     if (saved.emoji) cfg.emoji=saved.emoji;
     if (saved.customImg) cfg.customImg=saved.customImg;
-    addWidget({id:genId('link'),type:'link',x:slot.x,y:slot.y,w:r.defW,h:r.defH,config:cfg});
+    addWidget({id:genId('link'),type:'link',w:r.defW,h:r.defH,config:cfg});
     toast(t('link_added'),'ok');
   }, false);
 }
@@ -60,7 +60,6 @@ function createQuickLink(prefill={}) {
 function renderSettings() {
   const dark=state.settings.theme==='dark', isMonet=state.settings.theme==='monet';
   const monetHue=state.settings.monetHue||'lavender', zh=lang==='zh';
-  const isCompact=state.settings.compactMode!==false;
   const bg=state.settings.background||{...BG_DEFAULTS};
   const thL=(!dark&&!isMonet)?' active':'', thD=dark?' active':'', thM=isMonet?' active':'';
   const lzh=zh?' active-2':'', len=!zh?' active-2':'';
@@ -125,8 +124,7 @@ function renderSettings() {
         <input type="range" class="bg-slider" id="s-brightness" min="0.3" max="1.5" step="0.05" value="${parseFloat(bg.brightness)||1}" ${!(bg.type==='image'&&bg.value)?'disabled':''}></div>
     </div>
     <div class="s-section">
-      <div class="s-sec-title">${zh?'布局':'Layout'}</div>
-      <div class="s-toggle-row"><div><div class="s-label">${t('compact_mode')}</div><div class="s-sub">${t('compact_mode_d')}</div></div><label class="s-toggle"><input type="checkbox" id="s-compact" ${isCompact?'checked':''}><span class="s-toggle-track"></span></label></div>
+      <div class="s-sec-title">${zh?'显示':'Display'}</div>
       <div class="s-toggle-row" style="margin-top:4px"><div><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><div class="s-sub">${zh?'只显示时间和搜索框':'Show only clock and search'}</div></div><label class="s-toggle"><input type="checkbox" id="s-pure" ${pureMode?'checked':''}><span class="s-toggle-track"></span></label></div>
     </div>
     <div class="s-section">
@@ -164,11 +162,6 @@ function renderSettings() {
   body.querySelectorAll('.monet-hue-btn').forEach(btn=>btn.addEventListener('click',function(e){e.stopPropagation();applyMonetHue(this.dataset.hue,this);}));
   body.querySelector('#slzh')?.addEventListener('click',()=>setLang('zh'));
   body.querySelector('#slen')?.addEventListener('click',()=>setLang('en'));
-  body.querySelector('#s-compact')?.addEventListener('change', e=>{
-    state.settings.compactMode=e.target.checked;
-    if (state.settings.compactMode){compact(state.widgets);saveState();renderAll();}else saveState();
-    toast(state.settings.compactMode?(zh?'磁吸布局已开启':'Compact layout ON'):(zh?'磁吸布局已关闭':'Compact layout OFF'),'ok');
-  });
   body.querySelector('#s-pure')?.addEventListener('change', e=>{ e.target.checked?enterPureMode():exitPureMode(); });
 
   const bgFileInput=document.getElementById('bg-file-input');
@@ -178,7 +171,7 @@ function renderSettings() {
   body.querySelector('#s-bg-remove')?.addEventListener('click',e=>{
     e.stopPropagation();if(!state.settings.background)return;
     state.settings.background.type='default';state.settings.background.value='';delete state.settings.background.palette;
-    applyBgPalette(null);saveState();applyBackground();renderSettings();
+    applyBgPalette(null);saveState();applyBackgroundNow();renderSettings();
     toast(zh?'背景已移除':'Background removed','ok');
   });
   if (bgc) {
@@ -189,9 +182,29 @@ function renderSettings() {
   }
   body.querySelector('#s-bg-sample')?.addEventListener('click',function(){triggerBgPaletteExtraction(this);});
   body.querySelector('#s-bg-palette-clear')?.addEventListener('click',function(){clearBgPalette(this);});
-  body.querySelector('#s-blur')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.blur=parseFloat(e.target.value);const v=body.querySelector('#s-blur-val');if(v)v.textContent=Math.round(parseFloat(e.target.value))+'px';debouncedSaveState();applyBackground();});
-  body.querySelector('#s-overlay')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.overlay=parseFloat(e.target.value);const v=body.querySelector('#s-ov-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';debouncedSaveState();applyBackground();});
-  body.querySelector('#s-brightness')?.addEventListener('input',e=>{if(!state.settings.background)state.settings.background={...BG_DEFAULTS};state.settings.background.brightness=parseFloat(e.target.value);const v=body.querySelector('#s-bright-val');if(v)v.textContent=Math.round(parseFloat(e.target.value)*100)+'%';debouncedSaveState();applyBackground();});
+  // Sliders: coalesce style writes into one per frame and temporarily disable
+  // #bg-layer/#bg-overlay transitions, otherwise every input tick restarts a
+  // 0.3-0.4s full-screen filter/background transition.
+  const bindBgSlider = (id, valId, apply, fmt) => {
+    const el = body.querySelector('#' + id);
+    if (!el) return;
+    el.addEventListener('input', e => {
+      if (!state.settings.background) state.settings.background = { ...BG_DEFAULTS };
+      apply(parseFloat(e.target.value));
+      const v = body.querySelector('#' + valId);
+      if (v) v.textContent = fmt(parseFloat(e.target.value));
+      document.body.classList.add('bg-adjusting');
+      debouncedSaveState();
+      applyBackground();
+    });
+    el.addEventListener('change', () => {
+      document.body.classList.remove('bg-adjusting');
+      applyBackgroundNow();
+    });
+  };
+  bindBgSlider('s-blur', 's-blur-val', v => { state.settings.background.blur = v; }, v => Math.round(v) + 'px');
+  bindBgSlider('s-overlay', 's-ov-val', v => { state.settings.background.overlay = v; }, v => Math.round(v * 100) + '%');
+  bindBgSlider('s-brightness', 's-bright-val', v => { state.settings.background.brightness = v; }, v => Math.round(v * 100) + '%');
   body.querySelectorAll('[data-e]').forEach(b=>b.addEventListener('click',()=>{setEng(b.dataset.e);renderSettings();toast(t('engine_switched',ENGINES[b.dataset.e].label),'ok');}));
   body.querySelector('#s-add')?.addEventListener('click',()=>{closeSettings();openMkt();});
   body.querySelector('#s-add-link')?.addEventListener('click',()=>{closeSettings();setTimeout(()=>createQuickLink(),150);});
@@ -203,7 +216,7 @@ function renderSettings() {
   body.querySelector('#s-rst')?.addEventListener('click',()=>{
     confirm2(t('reset_confirm'),t('reset_sub'),t('reset_btn'),ok=>{
       if(!ok)return;
-      state.widgets=DEF_WIDGETS.map(w=>({...w,config:{...w.config}}));state.settings={...DEF_SETTINGS,lang};
+      state.widgets=DEF_WIDGETS.map(w=>({...w,config:{...w.config}}));state.settings={...DEF_SETTINGS,lang,background:{...DEF_SETTINGS.background}};
       saveState();applyTheme(state.settings.theme,null);renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
     });
   });

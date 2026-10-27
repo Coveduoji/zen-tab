@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Zen Tab",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A beautiful, customisable new-tab dashboard.",
   "chrome_url_overrides": {
-    "newtab": "newtab.html"
+    "newtab": "dist/newtab.html"
   },
-  "permissions": ["storage", "geolocation"],
+  "permissions": ["geolocation"],
   "host_permissions": [
     "https://api.open-meteo.com/*",
     "https://nominatim.openstreetmap.org/*"
@@ -15,6 +15,9 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "icons": {
-    "16":  "icons/icon16.png"
+    "16":  "dist/icons/icon16.png",
+    "32":  "dist/icons/icon32.png",
+    "48":  "dist/icons/icon48.png",
+    "128": "dist/icons/icon128.png"
   }
 }
