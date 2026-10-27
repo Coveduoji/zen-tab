@@ -3,6 +3,7 @@
 const SIZE_RULES = {
   clock:    { minW:3, minH:2, maxW:6, maxH:4, defW:3, defH:2 },
   link:     { minW:1, minH:1, maxW:2, maxH:2, defW:1, defH:1 },
+  folder:   { minW:1, minH:1, maxW:2, maxH:2, defW:1, defH:1 },
   notes:    { minW:2, minH:2, maxW:6, maxH:6, defW:4, defH:4 },
   todo:     { minW:3, minH:3, maxW:8, maxH:7, defW:5, defH:5 },
   weather:  { minW:3, minH:2, maxW:6, maxH:4, defW:3, defH:2 },
@@ -11,12 +12,15 @@ const SIZE_RULES = {
   embed:    { minW:3, minH:3, maxW:8, maxH:8, defW:5, defH:5 },
 };
 // Widget types whose rendered w:h cell ratio is locked. Value is width/height.
-const ASPECT_LOCK = { pomodoro: 1, weather: 3/2, clock: 3/2 };
+const ASPECT_LOCK = { pomodoro: 1, folder: 1, weather: 3/2, clock: 3/2 };
 const COLS_MAX    = 20;
-const GAP         = 36;
-const CELL_TARGET = 60;
-// Side margin ≈ 2 grid columns; must match #grid-outer's left/right padding.
-const OUTER_PAD   = CELL_TARGET * 2;
+// Sparse desktop grid: larger cells with wider gaps between them. A 1×1 unit
+// is roughly CELL_TARGET px of content and GAP px of space around it.
+const GAP         = 48;
+const CELL_TARGET = 80;
+// Side margin; must match #grid-outer's left/right padding. Kept independent
+// of CELL_TARGET so retuning cell size doesn't silently overflow the container.
+const OUTER_PAD   = 120;
 
 // ── Cell geometry ─────────────────────────────────────────
 // Read the grid box once and derive every metric from that single layout read.
@@ -24,7 +28,11 @@ function readGeom() {
   const outer = document.getElementById('grid-outer');
   const gw = Math.max(0, (outer ? outer.clientWidth : 0) - OUTER_PAD * 2);
   const vc = Math.max(1, Math.min(COLS_MAX, Math.floor((gw + GAP) / (CELL_TARGET + GAP))));
-  const colW = (gw - GAP * (vc - 1)) / vc;
+  // GridStack divides the canvas width by the column count and insets every
+  // item by GAP/2 on each side, so the real content width is gw/vc - GAP.
+  // Using that here keeps itemWidth/rowH and the edit-mode grid aligned with
+  // the widgets instead of drifting by half a gap.
+  const colW = Math.max(1, gw / vc - GAP);
   return { gw, vc, colW, rowH: colW };
 }
 

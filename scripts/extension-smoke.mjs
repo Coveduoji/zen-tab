@@ -58,7 +58,11 @@ const actualId = found?.id || extId;
 
 const directUrl = `chrome-extension://${actualId}/dist/newtab.html`;
 try {
-  await page.goto(directUrl, { timeout: 8000 });
+  // 'load' waits for every subresource, including third-party favicons that
+  // can hang indefinitely in a sandboxed/offline environment. The app itself
+  // is ready at DOMContentLoaded; wait for a widget instead.
+  await page.goto(directUrl, { timeout: 20000, waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#grid-canvas .widget', { timeout: 10000 });
 } catch (e) {
   console.error('could not open extension page:', e.message);
   await context.close();
@@ -84,7 +88,7 @@ await page.evaluate(() => {
     settings: { theme: 'light', monetHue: 'lavender', engine: 'google', lang: 'zh', compactMode: true, background: { type: 'default', value: '', overlay: 0, blur: 0, brightness: 1 } },
   }));
 });
-await page.reload();
+await page.reload({ timeout: 20000, waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(800);
 
 const after = await page.evaluate(() => ({
@@ -96,7 +100,8 @@ console.log('after light hint', after);
 
 // Confirm the manifest's chrome_url_overrides wiring.
 const ntp = await context.newPage();
-await ntp.goto('chrome://newtab/');
+await ntp.goto('chrome://newtab/', { timeout: 20000, waitUntil: 'domcontentloaded' });
+await ntp.waitForSelector('#grid-canvas .widget', { timeout: 10000 }).catch(() => {});
 await ntp.waitForTimeout(700);
 console.log('newtab override', await ntp.evaluate(() => ({
   url: location.href,

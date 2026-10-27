@@ -8,6 +8,7 @@ const code = await readFile(new URL('../js/layout.js', import.meta.url), 'utf8')
 const ctx = vm.createContext({ console });
 vm.runInContext(code, ctx);
 
+const GAP = vm.runInContext('GAP', ctx);
 const geom = { gw: 1200, vc: 12, colW: 100, rowH: 100 };
 const pos = (layout, id) => {
   const p = layout.get(id);
@@ -22,8 +23,9 @@ test('dense layout places items in order and wraps by lowest slot', () => {
   ];
   const layout = ctx.computeDenseLayout(ws, geom);
   assert.equal(JSON.stringify(pos(layout, 'a')), JSON.stringify({ x: 0, y: 0, w: 1, h: 100 }));
-  assert.equal(JSON.stringify(pos(layout, 'b')), JSON.stringify({ x: 1, y: 0, w: 3, h: 248 }));
-  assert.equal(JSON.stringify(pos(layout, 'c')), JSON.stringify({ x: 4, y: 0, w: 4, h: 508 }));
+  const clockW = 3 * 100 + 2 * GAP;
+  assert.equal(JSON.stringify(pos(layout, 'b')), JSON.stringify({ x: 1, y: 0, w: 3, h: clockW / 1.5 }));
+  assert.equal(JSON.stringify(pos(layout, 'c')), JSON.stringify({ x: 4, y: 0, w: 4, h: 4 * 100 + 3 * GAP }));
 });
 
 test('dense layout fills a hole left by a shorter item', () => {
@@ -40,8 +42,8 @@ test('dense layout fills a hole left by a shorter item', () => {
   assert.equal(pos(layout, 'tall').y, 0);
   assert.equal(pos(layout, 'a').x, 1);
   assert.equal(pos(layout, 'b').x, 2);
-  assert.equal(pos(layout, 'c').y, 100 + 36);
-  assert.equal(pos(layout, 'filler').y, 100 + 36);
+  assert.equal(pos(layout, 'c').y, 100 + GAP);
+  assert.equal(pos(layout, 'filler').y, 100 + GAP);
 });
 
 test('aspect-locked widgets derive pixel height from width', () => {
@@ -50,7 +52,7 @@ test('aspect-locked widgets derive pixel height from width', () => {
     { id: 'pom', type: 'pomodoro', w: 3, h: 3 },
   ];
   const layout = ctx.computeDenseLayout(ws, geom);
-  const clockW = 3 * 100 + 2 * 36;
+  const clockW = 3 * 100 + 2 * GAP;
   assert.equal(pos(layout, 'clock').h, clockW / 1.5);
   assert.equal(pos(layout, 'pom').h, clockW);
 });
@@ -85,8 +87,8 @@ test('clampSize enforces per-type min/max and visible columns', () => {
 
 test('wPx converts a dense slot to pixels', () => {
   const link = ctx.wPx({ type: 'link' }, { x: 1, y: 200, w: 1, h: 100 }, geom);
-  assert.deepEqual({ ...link }, { left: 136, top: 200, width: 100, height: 100 });
+  assert.deepEqual({ ...link }, { left: 100 + GAP, top: 200, width: 100, height: 100 });
   const clock = ctx.wPx({ type: 'clock' }, { x: 0, y: 0, w: 3, h: 248 }, geom);
-  assert.equal(clock.width, 3 * 100 + 2 * 36);
+  assert.equal(clock.width, 3 * 100 + 2 * GAP);
   assert.equal(clock.height, 248);
 });

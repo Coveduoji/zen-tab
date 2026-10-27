@@ -43,6 +43,7 @@ document.addEventListener('visibilitychange', () => {
   initCmdPalette();   // cmdpalette.js
   initPureMode();     // puremode.js
   initPanels();       // panels.js  (FAB, context menu, keyboard, top clock)
+  initFolderModal();  // folder.js  (phone-style folder overlay)
   initTopClock();     // panels.js
 
   // 5. Apply i18n strings to DOM

@@ -182,6 +182,28 @@ if (!state.gridLayouts || typeof state.gridLayouts !== 'object') state.gridLayou
 // Sync lang global (defined in i18n.js) from saved settings
 lang = state.settings.lang || 'zh';
 
+// Folders reference top-level link widgets by id. Normalize the references at
+// boot: drop unknown/non-link ids, prevent duplicates, and keep each link in at
+// most one folder. Filed links stay in state.widgets so saveState()'s custom
+// icon bookkeeping keeps working for them.
+{
+  const filed = new Set();
+  for (const w of state.widgets) {
+    if (w.type !== 'folder') continue;
+    if (!w.config || typeof w.config !== 'object') w.config = {};
+    if (typeof w.config.name !== 'string' || !w.config.name.trim()) w.config.name = t('folder_default');
+    const ids = Array.isArray(w.config.childIds) ? w.config.childIds : [];
+    w.config.childIds = [];
+    for (const id of ids) {
+      if (filed.has(id)) continue;
+      const child = state.widgets.find(x => x.id === id && x.type === 'link');
+      if (!child) continue;
+      filed.add(id);
+      w.config.childIds.push(id);
+    }
+  }
+}
+
 // Sanitize geometry on load — re-derive h from w for any aspect-locked
 // widget type (link/pomodoro square, weather/clock 3:2, ...) so widgets
 // saved under older size rules snap back to a valid ratio instead of just

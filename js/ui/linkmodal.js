@@ -143,6 +143,7 @@ function initLinkModal() {
     // Icons render at most a few hundred px — cap well above that (crisp
     // even on high-DPI screens) instead of storing an unbounded original
     // against the localStorage quota shared with every other custom icon.
+    // resizeImageFile() encodes WebP (q=0.9) to keep that quota small.
     resizeImageFile(file, 400).then(dataUrl => {
       _previewImgVersion++;
       linkCustomImg = dataUrl; linkCustomEmoji = null;

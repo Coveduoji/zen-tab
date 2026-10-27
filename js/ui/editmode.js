@@ -41,6 +41,9 @@ function buildGridBg() {
   const el   = document.getElementById('grid-bg');
   const geom = readGeom();
   const rows = Math.max(14, Math.ceil(document.getElementById('grid-canvas').offsetHeight / (geom.rowH + GAP)));
+  // GridStack insets every item by GAP/2, so pad the guide grid by the same
+  // amount to line the cells up with the widget content.
+  el.style.padding = `${GAP / 2}px`;
   el.style.gridTemplateColumns = `repeat(${geom.vc}, ${geom.colW}px)`;
   el.style.gridTemplateRows    = `repeat(${rows}, ${geom.rowH}px)`;
   el.style.gap = `${GAP}px`;

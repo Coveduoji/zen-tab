@@ -154,6 +154,37 @@
     </div>
   </div>
 
+  <!-- FOLDER OVERLAY -->
+  <div class="modal-bg folder-overlay" id="folder-modal">
+    <div class="folder-panel" role="dialog" aria-modal="true">
+      <div class="folder-hd">
+        <input id="folder-name" class="folder-name" maxlength="60" readonly autocomplete="off">
+        <button class="folder-hd-btn" id="folder-edit" title="">✏️</button>
+        <button class="folder-hd-btn" id="folder-close" title="">✕</button>
+      </div>
+      <div id="folder-grid" class="folder-grid"></div>
+      <div id="folder-picker" class="folder-picker" style="display:none">
+        <div class="fp-bar">
+          <input id="folder-pick-search" class="fp-search" placeholder="" autocomplete="off">
+          <button class="btn-s" id="folder-pick-all" data-i18n="folder_pick_all"></button>
+        </div>
+        <div id="folder-pick-list" class="fp-list"></div>
+      </div>
+      <div class="folder-foot" id="folder-foot" style="display:none">
+        <button class="btn-s" id="folder-add-existing" data-i18n="folder_add_existing"></button>
+        <button class="btn-s" id="folder-add-new" data-i18n="folder_add_new"></button>
+        <button class="btn-danger" id="folder-del" data-i18n="folder_delete"></button>
+        <span style="flex:1"></span>
+        <button class="btn-p" id="folder-done" data-i18n="folder_done"></button>
+      </div>
+      <div class="folder-foot" id="folder-pick-foot" style="display:none">
+        <button class="btn-s" id="folder-pick-back" data-i18n="folder_back"></button>
+        <span style="flex:1"></span>
+        <button class="btn-p" id="folder-pick-add" data-i18n="folder_pick_add"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- LINK MODAL -->
   <div class="modal-bg" id="link-modal">
     <div class="modal" style="width:440px">

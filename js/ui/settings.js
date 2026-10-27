@@ -31,6 +31,15 @@ function renderMarket(q='') {
     btn.addEventListener('click',()=>{
       const type=btn.closest('.mkt-item').dataset.t; const d=REG[type]; if(!d)return;
       if (type==='link') { closeMkt(); createQuickLink(); return; }
+      if (type==='folder') {
+        const r=SIZE_RULES.folder||{defW:1,defH:1};
+        const id=genId('folder');
+        addWidget({id,type:'folder',w:r.defW,h:r.defH,config:{name:t('folder_default'),childIds:[]}});
+        closeMkt();
+        toast(t('widget_added',`${d.icon} ${d.name}`),'ok');
+        openFolder(id,{edit:true});
+        return;
+      }
       if (type==='embed') {
         closeMkt();
         showEmbedModal('', url=>{
@@ -99,6 +108,10 @@ function renderSettings() {
   const dark=state.settings.theme==='dark', isMonet=state.settings.theme==='monet';
   const monetHue=state.settings.monetHue||'lavender', zh=lang==='zh';
   const bg=state.settings.background||{...BG_DEFAULTS};
+  // The background lives in IndexedDB; dash_v3 only holds a placeholder until
+  // it finishes loading. Treat the placeholder as "not ready" so the preview
+  // does not render a broken <img src="__dash_bg_img__">.
+  const hasBg=bg.type==='image'&&!!bg.value&&bg.value!=='__dash_bg_img__';
   const thL=(!dark&&!isMonet)?' active':'', thD=dark?' active':'', thM=isMonet?' active':'';
   const lzh=zh?' active-2':'', len=!zh?' active-2':'';
 
@@ -137,7 +150,7 @@ function renderSettings() {
       </div>
       <div class="s-sec-title" style="margin-top:14px">${zh?'自定义背景':'Custom Background'}</div>
       <div class="bgc" id="bgc" tabindex="0" role="button" aria-label="${zh?'上传背景图片':'Upload background image'}">
-        ${(bg.type==='image'&&bg.value)?(
+        ${hasBg?(
           '<img src="'+bg.value+'" alt="bg" loading="lazy">'+
           '<div class="bgc-hover"><div class="bgc-hover-ico">📷</div><div class="bgc-hover-lbl">'+(zh?'更换背景':'Change background')+'</div></div>'+
           '<div class="bgc-drag-hint"><div class="bgc-drag-ico">📥</div><div class="bgc-drag-lbl">'+(zh?'放开以更换':'Drop to replace')+'</div></div>'+
@@ -148,18 +161,18 @@ function renderSettings() {
         )}
       </div>
       <div class="bg-ctrl-ttl">${zh?'背景控制':'Background Controls'}</div>
-      ${(bg.type==='image'&&bg.value)?`
+      ${hasBg?`
       <div class="bg-palette-row">
         <button class="bg-palette-btn${bg.palette?' active':''}" id="s-bg-sample">${bg.palette?(zh?'✨ 已启用取色':'✨ Palette Active'):(zh?'🎨 从背景取色':'🎨 Sample Colors')}</button>
         ${bg.palette?`<button class="bg-palette-clear" id="s-bg-palette-clear" title="${zh?'恢复默认配色':'Reset palette'}">✕</button>`:''}
       </div>
       <div class="bg-palette-hint">${zh?(bg.palette?`已提取主色调 H:${bg.palette.h}° — 点击重新取色`:'从背景图自动提取主色，智能调整文字与强调色'):(bg.palette?`Dominant hue H:${bg.palette.h}° — click to re-sample`:'Auto-extract dominant color to adjust text & accent')}</div>`:''}
       <div class="bg-sl-block"><div class="bg-sl-hd"><span class="bg-sl-lbl">${t('bg_blur')}</span><span class="bg-sl-val" id="s-blur-val">${parseFloat(bg.blur)||0}px</span></div>
-        <input type="range" class="bg-slider" id="s-blur" min="0" max="20" step="1" value="${parseFloat(bg.blur)||0}" ${!(bg.type==='image'&&bg.value)?'disabled':''}></div>
+        <input type="range" class="bg-slider" id="s-blur" min="0" max="20" step="1" value="${parseFloat(bg.blur)||0}" ${!hasBg?'disabled':''}></div>
       <div class="bg-sl-block"><div class="bg-sl-hd"><span class="bg-sl-lbl">${t('bg_overlay')}</span><span class="bg-sl-val" id="s-ov-val">${Math.round((parseFloat(bg.overlay)||0)*100)}%</span></div>
         <input type="range" class="bg-slider" id="s-overlay" min="0" max="0.8" step="0.05" value="${parseFloat(bg.overlay)||0}"></div>
       <div class="bg-sl-block"><div class="bg-sl-hd"><span class="bg-sl-lbl">${t('bg_brightness')}</span><span class="bg-sl-val" id="s-bright-val">${Math.round((parseFloat(bg.brightness)||1)*100)}%</span></div>
-        <input type="range" class="bg-slider" id="s-brightness" min="0.3" max="1.5" step="0.05" value="${parseFloat(bg.brightness)||1}" ${!(bg.type==='image'&&bg.value)?'disabled':''}></div>
+        <input type="range" class="bg-slider" id="s-brightness" min="0.3" max="1.5" step="0.05" value="${parseFloat(bg.brightness)||1}" ${!hasBg?'disabled':''}></div>
     </div>
     <div class="s-section">
       <div class="s-sec-title">${zh?'显示':'Display'}</div>

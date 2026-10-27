@@ -7,6 +7,7 @@ function reg(def) { REG[def.type] = def; }
 const CATALOG = [
   {type:'clock',   cat:'basic'},
   {type:'link',    cat:'basic'},
+  {type:'folder',  cat:'basic'},
   {type:'notes',   cat:'basic'},
   {type:'weather', cat:'info'},
   {type:'gtrend',  cat:'info'},

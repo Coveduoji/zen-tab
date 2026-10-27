@@ -35,10 +35,10 @@ function openCtxMenu(e, widgetId) {
   const menu  = document.getElementById('ctx-menu');
   const isLink  = wdata && wdata.type === 'link';
   document.getElementById('ctx-link').style.display = isLink ? 'flex' : 'none';
-  const editLabelMap = { link: t('ctx_edit_link'), notes: t('ctx_edit_note') };
+  const editLabelMap = { link: t('ctx_edit_link'), notes: t('ctx_edit_note'), folder: t('ctx_edit_folder') };
   const wtype = wdata ? wdata.type : '';
   document.getElementById('ctx-edit-label').textContent = editLabelMap[wtype] || t('ctx_edit_generic');
-  document.getElementById('ctx-edit').style.display = ['link','notes'].includes(wtype) ? 'flex' : 'none';
+  document.getElementById('ctx-edit').style.display = ['link','notes','folder'].includes(wtype) ? 'flex' : 'none';
   let x = e.clientX, y = e.clientY;
   // opacity:0 here is only to hide the menu while offsetWidth/offsetHeight
   // are measured for edge-flip positioning below — it must be cleared
@@ -118,6 +118,7 @@ function initPanels() {
 
   document.getElementById('ctx-edit').addEventListener('click', () => {
     const wdata = state.widgets.find(w => w.id === _ctxWidgetId); closeCtxMenu(); if (!wdata) return;
+    if (wdata.type === 'folder') { openFolder(wdata.id, { edit: true }); return; }
     if (wdata.type === 'link') {
       showLinkModal({ name:wdata.config.name, url:wdata.config.url, emoji:wdata.config.emoji, customImg:wdata.config.customImg }, saved => {
         const url = normalizeUrl(saved.url); wdata.config.name=saved.name; wdata.config.url=url;
@@ -145,9 +146,16 @@ function initPanels() {
   });
   document.getElementById('ctx-del').addEventListener('click', () => {
     const id = _ctxWidgetId; closeCtxMenu();
-    confirm2(t('del_confirm_t'), t('del_confirm_s'), t('del_btn'), ok => {
-      if (ok) { removeWidget(id); toast(t('widget_removed'), ''); }
-    });
+    const w = state.widgets.find(x => x.id === id);
+    const isFolder = w?.type === 'folder';
+    confirm2(
+      isFolder ? t('folder_del_confirm_t') : t('del_confirm_t'),
+      isFolder ? t('folder_del_confirm_s') : t('del_confirm_s'),
+      t('del_btn'),
+      ok => {
+        if (ok) { removeWidget(id); toast(t('widget_removed'), ''); }
+      },
+    );
   });
 
   // Keyboard shortcuts
@@ -161,6 +169,11 @@ function initPanels() {
     if (e.key==='Escape') {
       if (inInput) document.activeElement.blur();
       if (pureMode) { exitPureMode(); return; }
+      // The link modal can sit on top of an open folder overlay; close it
+      // first so Escape never hides the folder out from under it.
+      const linkModal = document.getElementById('link-modal');
+      if (linkModal?.classList.contains('open')) { linkModal.classList.remove('open'); return; }
+      if (document.getElementById('folder-modal')?.classList.contains('open')) { closeFolder(); return; }
       const anyModal = document.querySelector('.modal-bg.open');
       if (anyModal) { anyModal.classList.remove('open'); return; }
       if (document.getElementById('cmd-overlay').classList.contains('open')) { closeCmd(); return; }
@@ -170,6 +183,9 @@ function initPanels() {
       return;
     }
     if (inInput) return;
+    // The folder overlay owns the screen; don't open panels or switch modes
+    // behind it (Escape still closes it above).
+    if (document.getElementById('folder-modal')?.classList.contains('open')) return;
 
     if (e.ctrlKey||e.metaKey) {
       if (e.key==='k') { e.preventDefault(); openCmd(); }

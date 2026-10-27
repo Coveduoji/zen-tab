@@ -241,13 +241,16 @@ async function loadStoredBackground() {
     const value = (typeof idbKeyval !== 'undefined')
       ? await idbKeyval.get(BG_IDB_KEY)
       : localStorage.getItem('dash_bg_img');
-    if (state.settings.background.type !== 'image') return; // removed while loading
+    // The user can remove or replace the background while IndexedDB is being
+    // read; keep the newer value instead of overwriting it with the stale one.
+    const cur = state.settings.background;
+    if (cur.type !== 'image' || (cur.value && cur.value !== '__dash_bg_img__')) return;
     if (value) {
-      bg.value = value;
+      cur.value = value;
       applyBackgroundNow();
       if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
     } else {
-      bg.type = 'default'; bg.value = ''; delete bg.palette;
+      cur.type = 'default'; cur.value = ''; delete cur.palette;
       applyBgPalette(null); applyBackgroundNow();
       if (document.getElementById('settings-bg')?.classList.contains('open')) renderSettings();
     }
@@ -349,7 +352,15 @@ function buildPaletteFromColor({r,g,b,h,s,l}){
 function applyBgPalette(palette) {
   const TAG_ID='bg-palette-vars'; const existing=document.getElementById(TAG_ID); if(existing)existing.remove(); if(!palette)return;
   const p=palette;
-  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--monet-grad:${p.grad};--bg:${p.bg};--monet-ripple:${p.ripple};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
+  // A photo's palette can be the opposite lightness from the base theme
+  // (e.g. a bright image while the dark theme is active). Text and surface
+  // are overridden below, so every secondary surface token must follow —
+  // otherwise --bg2/--card-hover keep the base theme's dark value and cards
+  // (marketplace items, inputs, calendar tasks) render dark text on a dark
+  // background, and hovering makes it worse instead of better.
+  const bg2       = p.isDark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.045)';
+  const cardHover = p.isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.075)';
+  const css=`:root{--accent:${p.accent};--accent2:${p.accent2};--accent3:${p.accent3};--text:${p.textPrimary};--text-primary:${p.textPrimary};--text-muted:${p.textSecondary};--text-secondary:${p.textSecondary};--text-dim:${p.textDim};--text-on-accent:${p.textOnAccent};--surface:${p.surface};--surface-glass:${p.surfaceGlass};--card:${p.surface};--bg2:${bg2};--card-hover:${cardHover};--border:${p.border};--card-border:${p.border};--border-hover:${p.borderHover};--modal-overlay:${p.modalOverlay};--monet-grad:${p.grad};--bg:${p.bg};--monet-ripple:${p.ripple};}[data-theme]{--text:${p.textPrimary}!important;--text-primary:${p.textPrimary}!important;--text-muted:${p.textSecondary}!important;--text-secondary:${p.textSecondary}!important;--text-dim:${p.textDim}!important;--accent:${p.accent}!important;--accent2:${p.accent2}!important;--accent3:${p.accent3}!important;--text-on-accent:${p.textOnAccent}!important;--surface:${p.surface}!important;--surface-glass:${p.surfaceGlass}!important;--card:${p.surface}!important;--bg2:${bg2}!important;--card-hover:${cardHover}!important;--border:${p.border}!important;--card-border:${p.border}!important;--border-hover:${p.borderHover}!important;--modal-overlay:${p.modalOverlay}!important;}`;
   const style=document.createElement('style');style.id=TAG_ID;style.textContent=css;document.head.appendChild(style);
 }
 async function triggerBgPaletteExtraction(fromBtn) {

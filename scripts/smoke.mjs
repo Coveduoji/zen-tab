@@ -393,19 +393,217 @@ const bgBlobSize = await bgPage.evaluate(async () => {
   return blob.size;
 });
 await bgPage.waitForTimeout(1500);
-const bgNow = await bgPage.evaluate(() => ({
-  storedBg: (localStorage.getItem('dash_bg_img') || '').length,
-  dash: (localStorage.getItem('dash_v3') || '').length,
+const bgNow = await bgPage.evaluate(async () => ({
+  idb: ((await window.idbKeyval.get('zen_bg')) || '').length,
+  legacy: (localStorage.getItem('dash_bg_img') || '').length,
+  placeholder: JSON.parse(localStorage.getItem('dash_v3') || '{}').settings?.background?.value,
   layer: (document.getElementById('bg-layer').style.backgroundImage || '').length,
 }));
 await bgPage.reload({ waitUntil: 'load' });
-await bgPage.waitForTimeout(700);
-const bgAfter = await bgPage.evaluate(() => ({
-  storedBg: (localStorage.getItem('dash_bg_img') || '').length,
+// The image is applied asynchronously once IndexedDB resolves.
+await bgPage.waitForFunction(
+  () => (document.getElementById('bg-layer').style.backgroundImage || '').length > 1000,
+  null,
+  { timeout: 5000 },
+).catch(() => {});
+const bgAfter = await bgPage.evaluate(async () => ({
+  idb: ((await window.idbKeyval.get('zen_bg')) || '').length,
   layer: (document.getElementById('bg-layer').style.backgroundImage || '').length,
 }));
 console.log('background persistence', { blobBytes: bgBlobSize, now: bgNow, afterReload: bgAfter });
+if (!(bgNow.idb > 1000000 && bgNow.placeholder === '__dash_bg_img__' && bgNow.legacy === 0 && bgNow.layer > 1000)) {
+  errors.push('background not stored in IndexedDB with a dash_v3 placeholder');
+}
+if (!(bgAfter.idb === bgNow.idb && bgAfter.layer > 1000)) {
+  errors.push('background did not survive reload');
+}
 await bgCtx.close();
+
+// Custom link icons are downscaled at upload and stored as WebP, keeping the
+// shared localStorage quota small (photos are ~10x smaller than PNG).
+{
+  const iconCtx = await browser.newContext();
+  const iconPage = await iconCtx.newPage();
+  iconPage.on('pageerror', e => errors.push('icon pageerror: ' + e.message));
+  await iconPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+  await iconPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await iconPage.evaluate(() => document.getElementById('fab-add').click());
+  await iconPage.locator('.mkt-item[data-t="link"] .mkt-add').click();
+  await iconPage.waitForSelector('#link-modal.open', { timeout: 5000 });
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+  );
+  await iconPage.locator('#lm-img-file').setInputFiles({ name: 'icon.png', mimeType: 'image/png', buffer: png });
+  await iconPage.waitForTimeout(400);
+  await iconPage.fill('#link-name', 'IconSmoke');
+  await iconPage.fill('#link-url', 'example.net');
+  await iconPage.locator('#link-save').click();
+  await iconPage.waitForTimeout(400);
+  const icon = await iconPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const w = (s.widgets || []).find(w => w.type === 'link' && w.config?.name === 'IconSmoke');
+    const raw = w ? localStorage.getItem('dash_limg_' + w.id) : null;
+    return {
+      placeholder: w?.config?.customImg || null,
+      webp: !!raw && raw.startsWith('data:image/webp'),
+      chars: raw ? raw.length : 0,
+      rendered: !!document.querySelector(`.widget[data-id="${w?.id}"] .lw-custom-img`),
+    };
+  });
+  console.log('custom link icon', icon);
+  if (!(icon.placeholder === '__dash_limg__' && icon.webp && icon.rendered)) {
+    errors.push('custom link icon was not stored as WebP');
+  }
+  await iconCtx.close();
+}
+
+// Phone-style folders: create, rename, add existing links + a new one, open
+// from the dashboard, persist, move one out, then delete and release the rest.
+{
+  const folderCtx = await browser.newContext();
+  const folderPage = await folderCtx.newPage();
+  folderPage.on('pageerror', e => errors.push('folder pageerror: ' + e.message));
+  folderPage.on('console', msg => {
+    if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) {
+      errors.push('folder console: ' + msg.text());
+    }
+  });
+  await folderPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+  await folderPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+
+  // Three unfiled links; one more (wl1) comes from the default state.
+  await folderPage.evaluate(() => document.getElementById('fab-settings').click());
+  await folderPage.waitForTimeout(250);
+  await folderPage.locator('#s-bulk-links').fill('Alpha,https://alpha.example\nBeta,https://beta.example\nDelta,https://delta.example');
+  await folderPage.evaluate(() => document.getElementById('s-bulk-add').click());
+  await folderPage.waitForTimeout(300);
+  await folderPage.evaluate(() => document.getElementById('settings-close').click());
+  await folderPage.evaluate(() => document.activeElement?.blur());
+
+  // Create a folder from the marketplace; it opens straight into edit mode.
+  await folderPage.evaluate(() => document.getElementById('fab-add').click());
+  await folderPage.waitForTimeout(250);
+  await folderPage.locator('.mkt-item[data-t="folder"] .mkt-add').click();
+  await folderPage.waitForTimeout(300);
+  const folderOpen = await folderPage.evaluate(() => ({
+    open: document.getElementById('folder-modal').classList.contains('open'),
+    editing: !document.getElementById('folder-name').readOnly,
+  }));
+
+  await folderPage.locator('#folder-name').fill('Work');
+  await folderPage.locator('#folder-name').press('Enter');
+  await folderPage.waitForTimeout(200);
+
+  // Add two existing dashboard links through the picker, then a brand-new one.
+  await folderPage.evaluate(() => document.getElementById('folder-add-existing').click());
+  await folderPage.waitForTimeout(150);
+  await folderPage.locator('#folder-pick-list .fp-row', { hasText: 'Alpha' }).locator('input').check();
+  await folderPage.locator('#folder-pick-list .fp-row', { hasText: 'Beta' }).locator('input').check();
+  await folderPage.evaluate(() => document.getElementById('folder-pick-add').click());
+  await folderPage.waitForTimeout(300);
+  await folderPage.evaluate(() => document.getElementById('folder-add-new').click());
+  await folderPage.waitForTimeout(250);
+  await folderPage.locator('#link-name').fill('Gamma');
+  await folderPage.locator('#link-url').fill('gamma.example');
+  await folderPage.evaluate(() => document.getElementById('link-save').click());
+  await folderPage.waitForTimeout(300);
+
+  const folderState = await folderPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const f = (s.widgets || []).find(w => w.type === 'folder');
+    const byId = new Map((s.widgets || []).filter(w => w.type === 'link').map(w => [w.id, w.config.name]));
+    return {
+      name: f?.config?.name,
+      kids: f ? f.config.childIds.length : -1,
+      kidNames: f ? f.config.childIds.map(id => byId.get(id)) : [],
+      gridLinks: document.querySelectorAll('#grid-canvas .widget[data-type="link"]').length,
+      previewCells: [...document.querySelectorAll('.widget[data-type="folder"] .fw-cell')]
+        .filter(c => c.textContent.trim() || c.querySelector('img')).length,
+    };
+  });
+
+  await folderPage.evaluate(() => {
+    document.getElementById('folder-done').click();
+    document.getElementById('folder-close').click();
+  });
+  await folderPage.waitForTimeout(250);
+
+  // Normal-mode click opens the folder; a child launches and closes it.
+  await folderPage.evaluate(() => {
+    window.__opened = [];
+    window.open = (...a) => { window.__opened.push(a[0]); return null; };
+  });
+  await folderPage.locator('.widget[data-type="folder"]').click();
+  await folderPage.waitForTimeout(250);
+  const normalOpen = await folderPage.evaluate(() => ({
+    open: document.getElementById('folder-modal').classList.contains('open'),
+    readonly: document.getElementById('folder-name').readOnly,
+    items: document.querySelectorAll('#folder-grid .folder-item').length,
+  }));
+  await folderPage.locator('#folder-grid .folder-item', { hasText: 'Alpha' }).click();
+  await folderPage.waitForTimeout(200);
+  const launched = await folderPage.evaluate(() => ({
+    opened: window.__opened.slice(),
+    open: document.getElementById('folder-modal').classList.contains('open'),
+  }));
+
+  // Reload: folder and filed links persist; filed links stay off the grid.
+  await folderPage.reload({ waitUntil: 'load' });
+  await folderPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await folderPage.waitForTimeout(300);
+  const persisted = await folderPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const f = (s.widgets || []).find(w => w.type === 'folder');
+    const filed = (s.widgets || []).filter(w => w.type === 'link' && f?.config.childIds.includes(w.id));
+    return {
+      folder: !!f,
+      kids: f ? f.config.childIds.length : 0,
+      tile: !!document.querySelector('.widget[data-type="folder"]'),
+      filedHidden: filed.every(w => !document.querySelector(`.grid-stack-item[data-id="${w.id}"]`)),
+    };
+  });
+
+  // Move one child back out, then delete the folder (remaining links return).
+  await folderPage.locator('.widget[data-type="folder"]').click();
+  await folderPage.waitForTimeout(200);
+  await folderPage.evaluate(() => document.getElementById('folder-edit').click());
+  await folderPage.waitForTimeout(150);
+  await folderPage.locator('#folder-grid .fi-del').first().click();
+  await folderPage.waitForTimeout(300);
+  const moved = await folderPage.evaluate(() => ({
+    kids: JSON.parse(localStorage.getItem('dash_v3')).widgets.find(w => w.type === 'folder').config.childIds.length,
+    gridLinks: document.querySelectorAll('#grid-canvas .widget[data-type="link"]').length,
+  }));
+  await folderPage.evaluate(() => document.getElementById('folder-del').click());
+  await folderPage.waitForTimeout(150);
+  await folderPage.evaluate(() => document.getElementById('cb-ok').click());
+  await folderPage.waitForTimeout(400);
+  const deleted = await folderPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    return {
+      folders: s.widgets.filter(w => w.type === 'folder').length,
+      links: s.widgets.filter(w => w.type === 'link').length,
+      gridLinks: document.querySelectorAll('#grid-canvas .widget[data-type="link"]').length,
+    };
+  });
+
+  console.log('folder', { folderOpen, folderState, normalOpen, launched, persisted, moved, deleted });
+  if (!folderOpen.open || !folderOpen.editing) errors.push('folder editor did not open');
+  if (!(folderState.name === 'Work' && folderState.kids === 3 &&
+        folderState.kidNames.join(',') === 'Alpha,Beta,Gamma' &&
+        folderState.gridLinks === 2 && folderState.previewCells === 3)) {
+    errors.push('folder children were not stored/rendered correctly');
+  }
+  if (!normalOpen.open || !normalOpen.readonly || normalOpen.items !== 3) errors.push('folder did not open in normal mode');
+  if (!launched.opened.includes('https://alpha.example') || launched.open) errors.push('folder child did not launch/close');
+  if (!(persisted.folder && persisted.kids === 3 && persisted.tile && persisted.filedHidden)) {
+    errors.push('folder did not persist across reload');
+  }
+  if (!(moved.kids === 2 && moved.gridLinks === 3)) errors.push('moving a link out of a folder failed');
+  if (!(deleted.folders === 0 && deleted.gridLinks === deleted.links)) errors.push('deleting a folder did not release its links');
+  await folderCtx.close();
+}
 
 console.log('errors', errors.length ? errors : 'none');
 await browser.close();

@@ -63,9 +63,12 @@ function makeLocalCache(key, ttlMs) {
 // display at a few hundred px — storing an unbounded original wastes a lot
 // of the shared localStorage quota for detail nobody sees. Not used for the
 // background image, which is shown full-screen and kept at full quality.
-// Resolves to a PNG data URL (keeps transparency) capped at maxDim on the
-// longer side; never upscales a smaller source image.
-function resizeImageFile(file, maxDim) {
+// Encodes to lossy WebP by default: at icon sizes q=0.9 is visually
+// indistinguishable from PNG, transparency is preserved, and photos shrink
+// roughly 10x (10 photo icons ≈ 230 KB instead of ≈ 2.3 MB). Browsers that
+// do not support WebP return a PNG data URL from toDataURL(), so the stored
+// value is always valid. Capped at maxDim on the longer side; never upscales.
+function resizeImageFile(file, maxDim, mime = 'image/webp', quality = 0.9) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = ev => {
@@ -76,7 +79,7 @@ function resizeImageFile(file, maxDim) {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/png'));
+        resolve(canvas.toDataURL(mime, quality));
       };
       img.onerror = reject;
       img.src = ev.target.result;
