@@ -136,10 +136,12 @@ function initPanels() {
     if (wdata?.config.url) navigator.clipboard.writeText(wdata.config.url).then(() => toast(t('link_copied'), 'ok'));
   });
   document.getElementById('ctx-front').addEventListener('click', () => {
-    const idx = state.widgets.findIndex(w => w.id === _ctxWidgetId); closeCtxMenu(); if (idx < 0) return;
-    const [wdata] = state.widgets.splice(idx, 1);
-    state.widgets.unshift(wdata);
-    debouncedSaveState(); positionAll();
+    const id = _ctxWidgetId; closeCtxMenu();
+    const item = document.querySelector(`.grid-stack-item[data-id="${id}"]`);
+    if (!grid || !item) return;
+    grid.update(item, { x: 0, y: 0 });
+    grid.compact();
+    captureLayout();
   });
   document.getElementById('ctx-del').addEventListener('click', () => {
     const id = _ctxWidgetId; closeCtxMenu();

@@ -728,36 +728,65 @@ body.edit-mode .w-delete { display: flex; }
 /* Leave room for the corner delete button next to the header title. */
 body.edit-mode .w-header { padding-left: 32px; }
 
-/* Resize handles: edit mode only (same as the delete button) */
-.w-resize-handles { display: none; }
-body.edit-mode .w-resize-handles { display: block; }
-.rh {
-  position: absolute; width: 18px; height: 18px; z-index: 100;
-  display: flex; align-items: center; justify-content: center;
-  touch-action: none;
+/* GridStack's generated resize handle, styled as our dot and only enabled
+   in edit mode via grid.enableResize(). */
+#grid-canvas > .grid-stack-item > .ui-resizable-se {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  transform: none;
+  bottom: calc(var(--gs-item-margin-bottom) + 3px);
+  right: calc(var(--gs-item-margin-right) + 3px);
+  z-index: 120;
 }
-.rh::before {
-  content: ''; width: 10px; height: 10px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px rgba(124,106,245,.3);
+#grid-canvas > .grid-stack-item > .ui-resizable-se::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px rgba(124,106,245,.3);
   transition: transform .1s;
 }
-.rh:hover::before { transform: scale(1.25); }
-.rh.se { bottom: 4px; right: 4px; cursor: se-resize; }
-
-/* Reorder drop marker (edit mode) */
-#drop-marker {
-  display: none;
-  position: absolute;
-  z-index: 400;
-  pointer-events: none;
-  border: 1.5px dashed var(--accent);
-  border-radius: var(--r);
-  background: rgba(124,106,245,.08);
-  box-shadow: 0 0 0 3px rgba(124,106,245,.08);
-  transition: left .12s var(--ease), top .12s var(--ease),
-              width .12s var(--ease), height .12s var(--ease);
+#grid-canvas > .grid-stack-item > .ui-resizable-se:hover::before { transform: scale(1.25); }
+/* Normal mode: resize is disabled by GridStack; make sure the handle is gone. */
+#grid-canvas > .grid-stack-item.ui-resizable-disabled > .ui-resizable-se { display: none; }
+/* Pause expensive effects while GridStack drags/resizes. */
+#grid-canvas > .grid-stack-item.ui-draggable-dragging .widget,
+#grid-canvas > .grid-stack-item.ui-resizable-resizing .widget { animation: none !important; }
+#grid-canvas > .grid-stack-item.ui-draggable-dragging .widget,
+#grid-canvas > .grid-stack-item.ui-draggable-dragging .widget *,
+#grid-canvas > .grid-stack-item.ui-resizable-resizing .widget,
+#grid-canvas > .grid-stack-item.ui-resizable-resizing .widget * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
-#drop-marker.show { display: block; }
+
+/* ── GridStack integration ── */
+#grid-canvas.grid-stack {
+  position: relative;
+  min-height: 100%;
+}
+#grid-canvas > .grid-stack-item > .grid-stack-item-content {
+  overflow: visible; /* let card shadows show; the widget body handles its own scroll */
+}
+#grid-canvas > .grid-stack-item > .grid-stack-item-content > .widget {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+}
+/* The custom resize handle is our .rh element; keep it inside the card. */
+#grid-canvas > .grid-stack-item > .grid-stack-item-content > .widget .rh {
+  bottom: 4px;
+  right: 4px;
+}
 
 /* Widget body */
 .w-body {

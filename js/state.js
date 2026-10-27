@@ -24,6 +24,7 @@ function _defaultState() {
     orderOnly: true,
     widgets: DEF_WIDGETS.map(w => ({ ...w, config: { ...w.config } })),
     settings: { ...DEF_SETTINGS, background: { ...DEF_SETTINGS.background } },
+    gridLayouts: {},
   };
 }
 
@@ -65,6 +66,7 @@ function loadState() {
       s.orderOnly = true;
       _orderMigrated = true;
     }
+    if (!s.gridLayouts || typeof s.gridLayouts !== 'object') s.gridLayouts = {};
     return s;
   } catch(e) {
     return _defaultState();
@@ -147,7 +149,7 @@ function saveState() {
       }
     }
 
-    const json = JSON.stringify({ version: STORAGE_VERSION, orderOnly: true, widgets: slim.widgets, settings: slim.settings });
+    const json = JSON.stringify({ version: STORAGE_VERSION, orderOnly: true, widgets: slim.widgets, settings: slim.settings, gridLayouts: state.gridLayouts || {} });
     if (json !== _lastStateJson) {
       localStorage.setItem('dash_v3', json);
       _lastStateJson = json;
@@ -166,7 +168,7 @@ function saveState() {
         });
         const settings = { ...slim.settings, background: { ...slim.settings.background } };
         if (isBgImg) settings.background.value = '__dash_bg_img__';
-        const json = JSON.stringify({ version: STORAGE_VERSION, orderOnly: true, widgets, settings });
+        const json = JSON.stringify({ version: STORAGE_VERSION, orderOnly: true, widgets, settings, gridLayouts: state.gridLayouts || {} });
         localStorage.setItem('dash_v3', json);
         _lastStateJson = json;
       } catch(_) {}
@@ -179,6 +181,7 @@ const state = loadState();
 if (!state.settings) state.settings = { ...DEF_SETTINGS, background: { ...DEF_SETTINGS.background } };
 if (!state.settings.background) state.settings.background = { ...DEF_SETTINGS.background };
 if (!state.widgets)  state.widgets  = DEF_WIDGETS.map(w => ({ ...w, config: { ...w.config } }));
+if (!state.gridLayouts || typeof state.gridLayouts !== 'object') state.gridLayouts = {};
 // Sync lang global (defined in i18n.js) from saved settings
 lang = state.settings.lang || 'zh';
 

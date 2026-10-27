@@ -9,6 +9,7 @@ function enterEditMode() {
   document.getElementById('edit-bar').classList.add('visible');
   document.getElementById('btn-edit-toggle')?.classList.add('active');
   document.getElementById('grid-bg').classList.add('visible');
+  if (grid) grid.enableResize(true);
   buildGridBg();
   toast(t('edit_mode_toast'), '');
 }
@@ -21,9 +22,9 @@ function exitEditMode() {
   document.getElementById('edit-bar').classList.remove('visible');
   const bg = document.getElementById('grid-bg');
   bg.classList.remove('visible');
-  // Free the hundreds of cell nodes; they are only needed while editing.
   bg.innerHTML = '';
   _gridBgCols = 0; _gridBgRows = 0;
+  if (grid) grid.enableResize(false);
 }
 
 // ── Grid background ───────────────────────────────────────

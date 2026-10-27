@@ -55,6 +55,11 @@ async function build() {
   await rm(dist, { recursive: true, force: true });
   await mkdir(path.join(dist, 'js'), { recursive: true });
   await mkdir(path.join(dist, 'icons'), { recursive: true });
+  await mkdir(path.join(dist, 'vendor'), { recursive: true });
+
+  const gridstackDist = path.join(root, 'node_modules', 'gridstack', 'dist');
+  await cp(path.join(gridstackDist, 'gridstack-all.js'), path.join(dist, 'vendor', 'gridstack-all.js'));
+  await cp(path.join(gridstackDist, 'gridstack.min.css'), path.join(dist, 'vendor', 'gridstack.min.css'));
 
   await writeFile(path.join(dist, 'js', 'app.js'), js.code);
   await writeFile(path.join(dist, 'js', 'theme-init.js'), await readFile(path.join(root, 'js', 'theme-init.js'), 'utf8'));

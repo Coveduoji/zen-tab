@@ -80,13 +80,13 @@ const state = {
 };
 const weather = { icon:'☀️', temp:21, desc:'晴', city:'Test City', daily:Array.from({length:7},(_,i)=>({code:0,hi:24+i,lo:14+i})) };
 const trending = Array.from({length:15},(_,i)=>({ repoName:`owner/repo-${i}`, link:`https://github.com/owner/repo-${i}`, stars:`${10-i/2}k`, language:i%2?'TypeScript':'Rust', desc:'fixture repository' }));
-await page.evaluate(({ state, bg, weather, trending }) => {
+await page.close();
+await context.addInitScript(({ state, bg, weather, trending }) => {
   localStorage.setItem('dash_bg_img', bg);
   localStorage.setItem('dash_v3', JSON.stringify({ version: 3, widgets: state.widgets, settings: state.settings }));
   localStorage.setItem('weather_cache_v2', JSON.stringify({ payload: weather, ts: Date.now() }));
   localStorage.setItem('gtrend_cache_v2', JSON.stringify({ payload: trending, ts: Date.now() }));
 }, { state, bg, weather, trending });
-await page.close();
 
 const measure = async () => {
   const p = await context.newPage();

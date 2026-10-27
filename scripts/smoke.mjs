@@ -60,7 +60,7 @@ const base = await page.evaluate(() => ({
   font: getComputedStyle(document.documentElement).getPropertyValue('--body').trim().slice(0, 20),
   normalModeDeleteButtons: [...document.querySelectorAll('.w-delete')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
-  normalModeResizeHandles: [...document.querySelectorAll('.w-resize-handles')]
+  normalModeResizeHandles: [...document.querySelectorAll('.ui-resizable-se')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
 }));
 console.log('base', base);
@@ -137,37 +137,37 @@ if (await pom.count()) {
 // Earliest widgets may be scrolled out of view after typing in notes.
 await page.evaluate(() => { const g = document.getElementById('grid-outer'); if (g) g.scrollTop = 0; });
 await page.waitForTimeout(120);
-const clock = page.locator('#grid-canvas .widget[data-type="clock"]').first();
-const notesWidget = page.locator('#grid-canvas .widget[data-type="notes"]').first();
-const clockBefore = await clock.evaluate(el => ({ left: el.style.left, top: el.style.top }));
+const clock = page.locator('#grid-canvas .grid-stack-item[data-type="clock"]').first();
+const notesWidget = page.locator('#grid-canvas .grid-stack-item[data-type="notes"]').first();
+const clockBefore = await clock.evaluate(el => ({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h }));
 const cb = await clock.boundingBox();
 const nb = await notesWidget.boundingBox();
 console.log('drag points', { cb, nb, hit: await page.evaluate(({ x, y }) => {
   const el = document.elementFromPoint(x, y);
   return el ? { tag: el.tagName, cls: String(el.className), widget: el.closest('.widget')?.dataset.type || null } : null;
-}, { x: cb ? cb.x + cb.width / 2 : 0, y: cb ? cb.y + 12 : 0 }) });
+}, { x: cb ? cb.x + cb.width / 2 : 0, y: cb ? cb.y + 30 : 0 }) });
 if (cb && nb) {
-  await page.mouse.move(cb.x + cb.width / 2, cb.y + 12);
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + 30);
   await page.mouse.down();
   await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2, { steps: 15 });
   console.log('during reorder', await page.evaluate(() => ({
     edit: document.body.classList.contains('edit-mode'),
-    dragging: document.querySelector('.widget.dragging')?.dataset.type || null,
-    marker: getComputedStyle(document.getElementById('drop-marker')).display,
+    dragging: document.querySelector('.grid-stack-item.ui-draggable-dragging')?.dataset.type || null,
+    placeholder: !!document.querySelector('.grid-stack-placeholder'),
   })));
   await page.mouse.up();
   await page.waitForTimeout(500);
 }
 const reorder = await page.evaluate(() => {
-  const items = [...document.querySelectorAll('#grid-canvas .widget')].map(el => ({
+  const items = [...document.querySelectorAll('#grid-canvas > .grid-stack-item')].map(el => ({
     type: el.dataset.type,
-    left: parseFloat(el.style.left) || 0,
-    top: parseFloat(el.style.top) || 0,
+    x: el.gridstackNode?.x ?? 0,
+    y: el.gridstackNode?.y ?? 0,
   }));
-  items.sort((a, b) => a.top - b.top || a.left - b.left);
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
   return items.map(x => x.type);
 });
-console.log('reorder', { clockBefore, clockAfter: await clock.evaluate(el => ({ left: el.style.left, top: el.style.top })), visualOrder: reorder });
+console.log('reorder', { clockBefore, clockAfter: await clock.evaluate(el => ({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h })), visualOrder: reorder });
 
 // Theme cycle: the switch is synchronous; the ripple must not block input.
 const before = await page.getAttribute('html', 'data-theme');
@@ -194,16 +194,16 @@ console.log('edit mode', await page.evaluate(() => ({
   cells: document.querySelectorAll('#grid-bg .grid-bg-cell').length,
   deleteButtons: [...document.querySelectorAll('.w-delete')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
-  resizeHandles: [...document.querySelectorAll('.w-resize-handles')]
+  resizeHandles: [...document.querySelectorAll('.ui-resizable-se')]
     .filter(el => getComputedStyle(el).display !== 'none').length,
 })));
 
 // Resize via the bottom-right handle (grid-snapped), then exit edit mode.
 await page.evaluate(() => { const g = document.getElementById('grid-outer'); if (g) g.scrollTop = 0; });
 await page.waitForTimeout(120);
-const resizeWidget = page.locator('#grid-canvas .widget[data-type="clock"]').first();
-const beforeResize = await resizeWidget.evaluate(el => ({ w: el.style.width, h: el.style.height }));
-const resizeHandle = resizeWidget.locator('.rh');
+const resizeWidget = page.locator('#grid-canvas > .grid-stack-item[data-type="clock"]').first();
+const beforeResize = await resizeWidget.evaluate(el => ({ w: el.gridstackNode?.w, h: el.gridstackNode?.h }));
+const resizeHandle = resizeWidget.locator('.ui-resizable-se');
 const rb = await resizeHandle.boundingBox();
 if (rb) {
   await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
@@ -212,7 +212,7 @@ if (rb) {
   await page.mouse.up();
   await page.waitForTimeout(450);
 }
-console.log('resize', { before: beforeResize, after: await resizeWidget.evaluate(el => ({ w: el.style.width, h: el.style.height })) });
+console.log('resize', { before: beforeResize, after: await resizeWidget.evaluate(el => ({ w: el.gridstackNode?.w, h: el.gridstackNode?.h })) });
 await page.keyboard.press('Control+e');
 
 // Pure mode
@@ -235,7 +235,7 @@ await page.evaluate(() => document.getElementById('settings-close').click());
 // Resize the viewport and restore it: every widget must return to exactly
 // the same slot (the core reason for switching to order-only layout).
 const layoutBefore = await page.evaluate(() => Object.fromEntries(
-  [...document.querySelectorAll('#grid-canvas .widget')].map(el => [el.dataset.id, el.style.left + '|' + el.style.top]),
+  [...document.querySelectorAll('#grid-canvas > .grid-stack-item')].map(el => [el.dataset.id, JSON.stringify({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h })]),
 ));
 await page.setViewportSize({ width: 900, height: 850 });
 await page.waitForTimeout(450);
@@ -246,11 +246,13 @@ const narrowed = await page.evaluate(() => ({
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.waitForTimeout(450);
 const layoutAfter = await page.evaluate(() => Object.fromEntries(
-  [...document.querySelectorAll('#grid-canvas .widget')].map(el => [el.dataset.id, el.style.left + '|' + el.style.top]),
+  [...document.querySelectorAll('#grid-canvas > .grid-stack-item')].map(el => [el.dataset.id, JSON.stringify({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h })]),
 ));
 console.log('after resize', {
   ...narrowed,
   restored: JSON.stringify(layoutBefore) === JSON.stringify(layoutAfter),
+  before: layoutBefore,
+  after: layoutAfter,
 });
 
 // Reload and confirm persistence
@@ -260,7 +262,7 @@ console.log('after reload', await page.evaluate(() => ({
   widgets: document.querySelectorAll('#grid-canvas .widget').length,
   theme: document.documentElement.getAttribute('data-theme'),
   note: document.querySelector('.notes-ta')?.value || null,
-  clockLeft: document.querySelector('.widget[data-type="clock"]')?.style.left || null,
+  clockNode: (() => { const el = document.querySelector('#grid-canvas > .grid-stack-item[data-type="clock"]'); return el ? JSON.stringify({ x: el.gridstackNode?.x, y: el.gridstackNode?.y, w: el.gridstackNode?.w, h: el.gridstackNode?.h }) : null; })(),
   renderErrors: [...document.querySelectorAll('#grid-canvas .widget')].filter(el => el.textContent.includes('Render error')).length,
 })));
 

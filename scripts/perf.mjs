@@ -96,9 +96,11 @@ function seedScript({ state, bg, weather, trending }) {
     repoName: `owner/repo-${i}`, link: `https://github.com/owner/repo-${i}`,
     stars: `${10 - i / 2}k`, language: i % 2 ? 'TypeScript' : 'Rust', desc: 'fixture repository',
   }));
-  await page.evaluate(seedScript, { state: seed, bg, weather, trending });
-  console.log(`[perf] seeded background ${(bg.length / 1024 / 1024).toFixed(2)} MB (data URL)`);
+  // Seed on every future navigation via an init script. Writing localStorage
+  // from this setup page would be overwritten by its pagehide save.
   await page.close();
+  await context.addInitScript(seedScript, { state: seed, bg, weather, trending });
+  console.log(`[perf] seeded background ${(bg.length / 1024 / 1024).toFixed(2)} MB (data URL)`);
 }
 
 const results = [];
