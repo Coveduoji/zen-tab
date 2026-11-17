@@ -34,15 +34,20 @@ function updateLinkPreview() {
     prevIco.innerHTML = `<span style="font-size:1.8rem">${linkCustomEmoji}</span>`;
   } else if (host) {
     const favUrl = `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
+    const fallback = linkEmoji(host);
+    const keyAtRequest = iconKey;
+    // Show the emoji immediately; a slow or blocked favicon request must not
+    // leave the preview as an empty white tile.
+    prevIco.innerHTML = `<span style="font-size:1.75rem">${esc(fallback)}</span>`;
     const _img = document.createElement('img');
     _img.decoding = 'async';
-    _img.src = favUrl; _img.alt = '';
-    _img.addEventListener('error', () => {
-      const _sp = document.createElement('span');
-      _sp.style.fontSize = '1.8rem'; _sp.textContent = linkEmoji(host);
-      prevIco.innerHTML = ''; prevIco.appendChild(_sp);
+    _img.alt = '';
+    _img.addEventListener('load', () => {
+      if (_previewIconKey !== keyAtRequest) return;
+      prevIco.innerHTML = '';
+      prevIco.appendChild(_img);
     });
-    prevIco.innerHTML = ''; prevIco.appendChild(_img);
+    _img.src = favUrl;
   } else {
     prevIco.innerHTML = `<span style="font-size:1.8rem">🌐</span>`;
   }
@@ -59,7 +64,7 @@ function _syncImgPreviewUI() {
     preview.classList.add('has-img');
     if (clearBtn) clearBtn.style.display = '';
   } else {
-    preview.innerHTML = `<span class="lm-img-empty-ico">🖼️</span><span class="lm-img-empty-txt">${lang==='zh'?'点击上传图片':'Upload image'}</span>`;
+    preview.innerHTML = `<span class="lm-img-empty-ico">🖼️</span><span class="lm-img-empty-txt">${lang==='zh'?'上传图片':'Upload'}</span>`;
     preview.classList.remove('has-img');
     if (clearBtn) clearBtn.style.display = 'none';
   }
@@ -166,6 +171,10 @@ function initLinkModal() {
     document.getElementById('link-modal').classList.remove('open');
   });
   document.getElementById('link-cancel').addEventListener('click', () => {
+    linkCb = null; linkCustomEmoji = null; linkCustomImg = null;
+    document.getElementById('link-modal').classList.remove('open');
+  });
+  document.getElementById('link-close')?.addEventListener('click', () => {
     linkCb = null; linkCustomEmoji = null; linkCustomImg = null;
     document.getElementById('link-modal').classList.remove('open');
   });

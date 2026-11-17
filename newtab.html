@@ -96,7 +96,10 @@
 
   <!-- EDIT MODE BAR -->
   <div id="edit-bar">
-    <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
+    <div class="edit-bar-left">
+      <div id="edit-bar-label" data-i18n="edit_mode_label"></div>
+      <span class="edit-bar-hint" data-i18n="folder_merge_hint"></span>
+    </div>
     <div id="edit-bar-actions">
       <button class="edit-action-btn done" id="btn-done" data-i18n="done_btn"></button>
     </div>
@@ -109,6 +112,8 @@
   <div id="grid-outer">
     <div id="grid-canvas" class="grid-stack">
       <div id="grid-bg"></div>
+      <div id="row-dividers" aria-hidden="true"></div>
+      <svg id="divider-layer" aria-hidden="true"></svg>
       <div id="empty-hint">
         <div class="eh-ico">✦</div>
         <div class="eh-t" data-i18n="empty_title"></div>
@@ -158,7 +163,9 @@
   <div class="modal-bg folder-overlay" id="folder-modal">
     <div class="folder-panel" role="dialog" aria-modal="true">
       <div class="folder-hd">
+        <span class="folder-title-ico">📁</span>
         <input id="folder-name" class="folder-name" maxlength="60" readonly autocomplete="off">
+        <span id="folder-title" class="folder-title"></span>
         <button class="folder-hd-btn" id="folder-edit" title="">✏️</button>
         <button class="folder-hd-btn" id="folder-close" title="">✕</button>
       </div>
@@ -187,42 +194,47 @@
 
   <!-- LINK MODAL -->
   <div class="modal-bg" id="link-modal">
-    <div class="modal" style="width:440px">
-      <div class="modal-title">🔗 <span id="link-modal-title"></span></div>
-      <div class="lm-icon-row" id="lm-preview-row">
-        <div id="link-icon-preview"><span id="lip-emoji">🌐</span></div>
-        <div class="lm-icon-meta">
-          <div class="lm-icon-name" id="lm-preview-name">—</div>
-          <div class="lm-icon-host" id="lm-preview-host"></div>
-        </div>
+    <div class="modal link-modal-card">
+      <div class="modal-hd">
+        <div class="modal-title"><span class="modal-title-ico">🔗</span><span id="link-modal-title"></span></div>
+        <button class="modal-x" id="link-close" type="button" aria-label="Close">✕</button>
       </div>
-      <div class="modal-field">
-        <div class="modal-lbl" data-i18n="link_name_label"></div>
-        <input class="modal-inp" id="link-name" autocomplete="off">
-      </div>
-      <div class="modal-field">
-        <div class="modal-lbl">URL <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.63rem;color:var(--text-dim)">— 自动补全 https://</span></div>
-        <input class="modal-inp" id="link-url" placeholder="github.com" autocomplete="off">
-      </div>
-      <div class="modal-field" id="lm-emoji-section">
-        <div class="modal-lbl" id="lm-emoji-lbl">自定义图标</div>
-        <div class="lm-emoji-row" id="lm-emoji-row"></div>
-      </div>
-      <div class="modal-field" id="lm-img-section">
-        <div class="modal-lbl" id="lm-img-lbl">自定义图片图标</div>
-        <div class="lm-img-upload" id="lm-img-upload">
-          <div class="lm-img-preview" id="lm-img-preview">
-            <span class="lm-img-empty-ico">🖼️</span>
-            <span class="lm-img-empty-txt" id="lm-img-empty-txt">点击上传图片</span>
+      <div class="modal-body">
+        <div class="lm-icon-row" id="lm-preview-row">
+          <div id="link-icon-preview"><span id="lip-emoji">🌐</span></div>
+          <div class="lm-icon-meta">
+            <div class="lm-icon-name" id="lm-preview-name">—</div>
+            <div class="lm-icon-host" id="lm-preview-host"></div>
           </div>
-          <input type="file" id="lm-img-file" accept="image/*" style="display:none">
-          <button class="lm-img-clear" id="lm-img-clear" style="display:none">✕ 移除</button>
         </div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn-danger" id="link-delete" style="display:none;margin-right:auto">🗑 <span id="link-delete-label"></span></button>
-        <button class="btn-s" id="link-cancel" data-i18n="cancel"></button>
-        <button class="btn-p" id="link-save" data-i18n="add_link_btn"></button>
+        <div class="modal-field">
+          <div class="modal-lbl" data-i18n="link_name_label"></div>
+          <input class="modal-inp" id="link-name" autocomplete="off">
+        </div>
+        <div class="modal-field">
+          <div class="modal-lbl">URL <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.63rem;color:var(--text-dim)">— 自动补全 https://</span></div>
+          <input class="modal-inp" id="link-url" placeholder="github.com" autocomplete="off">
+        </div>
+        <div class="modal-field" id="lm-emoji-section">
+          <div class="modal-lbl" id="lm-emoji-lbl">自定义图标</div>
+          <div class="lm-emoji-row" id="lm-emoji-row"></div>
+        </div>
+        <div class="modal-field" id="lm-img-section">
+          <div class="modal-lbl" id="lm-img-lbl">自定义图片图标</div>
+          <div class="lm-img-upload" id="lm-img-upload">
+            <div class="lm-img-preview" id="lm-img-preview">
+              <span class="lm-img-empty-ico">🖼️</span>
+              <span class="lm-img-empty-txt" id="lm-img-empty-txt">上传图片</span>
+            </div>
+            <input type="file" id="lm-img-file" accept="image/*" style="display:none">
+            <button class="lm-img-clear" id="lm-img-clear" style="display:none">✕ 移除</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-danger" id="link-delete" style="display:none;margin-right:auto">🗑 <span id="link-delete-label"></span></button>
+          <button class="btn-s" id="link-cancel" data-i18n="cancel"></button>
+          <button class="btn-p" id="link-save" data-i18n="add_link_btn"></button>
+        </div>
       </div>
     </div>
   </div>
@@ -287,6 +299,7 @@
 <script src="js/widgets/clock.js"></script>
 <script src="js/widgets/link.js"></script>
 <script src="js/widgets/folder.js"></script>
+<script src="js/widgets/divider.js"></script>
 <script src="js/widgets/notes.js"></script>
 <script src="js/widgets/todo.js"></script>
 <script src="js/widgets/weather.js"></script>

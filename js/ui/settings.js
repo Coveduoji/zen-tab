@@ -31,6 +31,11 @@ function renderMarket(q='') {
     btn.addEventListener('click',()=>{
       const type=btn.closest('.mkt-item').dataset.t; const d=REG[type]; if(!d)return;
       if (type==='link') { closeMkt(); createQuickLink(); return; }
+      if (type==='divider_h' || type==='divider_v') {
+        closeMkt();
+        addOverlayDivider(type);
+        return;
+      }
       if (type==='folder') {
         const r=SIZE_RULES.folder||{defW:1,defH:1};
         const id=genId('folder');
@@ -102,6 +107,12 @@ function parseBulkLinks(raw) {
     out.push({ name: name.trim() || url, url });
   }
   return out;
+}
+
+// Icon labels (quick links / folders) are rendered by CSS; this class is the
+// single switch used at boot, on toggle, and after a dashboard reset.
+function applyLabelsSetting() {
+  document.body.classList.toggle('show-labels', !!state.settings.showLabels);
 }
 
 function renderSettings() {
@@ -177,6 +188,7 @@ function renderSettings() {
     <div class="s-section">
       <div class="s-sec-title">${zh?'显示':'Display'}</div>
       <div class="s-toggle-row" style="margin-top:4px"><div><div class="s-label">${zh?'纯净模式':'Pure Mode'}</div><div class="s-sub">${zh?'只显示时间和搜索框':'Show only clock and search'}</div></div><label class="s-toggle"><input type="checkbox" id="s-pure" ${pureMode?'checked':''}><span class="s-toggle-track"></span></label></div>
+      <div class="s-toggle-row"><div><div class="s-label">${esc(t('show_labels'))}</div><div class="s-sub">${esc(t('show_labels_sub'))}</div></div><label class="s-toggle"><input type="checkbox" id="s-labels" ${state.settings.showLabels?'checked':''}><span class="s-toggle-track"></span></label></div>
     </div>
     <div class="s-section">
       <div class="s-sec-title">${zh?'批量添加快捷链接':'Batch Add Quick Links'}</div>
@@ -215,6 +227,11 @@ function renderSettings() {
   body.querySelector('#slzh')?.addEventListener('click',()=>setLang('zh'));
   body.querySelector('#slen')?.addEventListener('click',()=>setLang('en'));
   body.querySelector('#s-pure')?.addEventListener('change', e=>{ e.target.checked?enterPureMode():exitPureMode(); });
+  body.querySelector('#s-labels')?.addEventListener('change', e=>{
+    state.settings.showLabels = !!e.target.checked;
+    applyLabelsSetting();
+    saveState();
+  });
 
   const bgFileInput=document.getElementById('bg-file-input');
   const bgc=body.querySelector('#bgc');
@@ -282,7 +299,7 @@ function renderSettings() {
     confirm2(t('reset_confirm'),t('reset_sub'),t('reset_btn'),ok=>{
       if(!ok)return;
       state.widgets=DEF_WIDGETS.map(w=>({...w,config:{...w.config}}));state.settings={...DEF_SETTINGS,lang,background:{...DEF_SETTINGS.background}};
-      saveState();applyTheme(state.settings.theme,null,{animate:false});renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
+      saveState();applyLabelsSetting();applyTheme(state.settings.theme,null,{animate:false});renderAll();renderSettings();toast(t('dashboard_reset'),'ok');
     });
   });
 

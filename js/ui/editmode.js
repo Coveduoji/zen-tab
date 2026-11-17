@@ -14,6 +14,7 @@ function enterEditMode() {
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   document.querySelectorAll('#grid-canvas .widget').forEach(card => setWidgetInert(card, true));
   buildGridBg();
+  if (typeof renderDividers === 'function') renderDividers();
   toast(t('edit_mode_toast'), '');
 }
 
@@ -29,6 +30,7 @@ function exitEditMode() {
   _gridBgCols = 0; _gridBgRows = 0;
   document.querySelectorAll('#grid-canvas .widget').forEach(card => setWidgetInert(card, false));
   if (grid) grid.enableResize(false);
+  if (typeof renderDividers === 'function') renderDividers();
 }
 
 // ── Grid background ───────────────────────────────────────

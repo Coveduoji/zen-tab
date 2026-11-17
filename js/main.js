@@ -16,6 +16,7 @@ document.addEventListener('visibilitychange', () => {
 
   // 1. State is already loaded by state.js (runs before this file)
   //    lang is already set from state.settings.lang
+  applyLabelsSetting();
 
   // 2. Apply theme + background immediately (before first paint).
   //    Use the commit-only path: the first paint already has the correct theme
@@ -44,6 +45,7 @@ document.addEventListener('visibilitychange', () => {
   initPureMode();     // puremode.js
   initPanels();       // panels.js  (FAB, context menu, keyboard, top clock)
   initFolderModal();  // folder.js  (phone-style folder overlay)
+  initDividerLayer(); // divider.js (overlay line components)
   initTopClock();     // panels.js
 
   // 5. Apply i18n strings to DOM

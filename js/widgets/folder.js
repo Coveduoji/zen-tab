@@ -6,6 +6,8 @@ let _folderId = null;
 let _folderEdit = false;
 let _folderPicking = false;
 let _folderSearch = '';
+let _folderDragId = null;
+let _folderDragEndedAt = 0;
 const _folderIconBound = new WeakSet();
 
 function _folderGet(id) {
@@ -79,6 +81,7 @@ reg({
           ? `<div class="fw-grid">${cells.join('')}</div>`
           : '<div class="fw-empty">📁</div>'}
       </div>
+      <div class="fw-name">${esc(cfg.name)}</div>
       <div class="lw-tooltip">${esc(cfg.name)}${kids.length ? ' · ' + kids.length : ''}</div>
     </div>`;
     _bindFolderIconFallbacks(body);
@@ -106,6 +109,15 @@ function _folderCommitName() {
     saveState();
     renderWidget(f.id);
   }
+}
+
+// A read-only folder title should not keep the blue text selection from a
+// previous edit session.
+function _folderBlurName() {
+  const inp = document.getElementById('folder-name');
+  if (!inp) return;
+  inp.blur();
+  try { inp.setSelectionRange(0, 0); } catch (_) {}
 }
 
 function _folderOpenLink(link) {
@@ -157,6 +169,18 @@ function _folderUnfiledLinks() {
   return state.widgets.filter(w => w.type === 'link' && !filed.has(w.id));
 }
 
+// Persist the DOM order after an in-folder drag.
+function _commitFolderOrder() {
+  const f = _folderGet(_folderId);
+  if (!f) return;
+  const ids = [...document.querySelectorAll('#folder-grid .folder-item')].map(el => el.dataset.id);
+  const cur = f.config.childIds || [];
+  if (ids.length === cur.length && ids.every((id, i) => id === cur[i])) return;
+  f.config.childIds = ids;
+  saveState();
+  renderWidget(f.id);
+}
+
 function renderPickerList() {
   const f = _folderGet(_folderId);
   if (!f) return;
@@ -198,11 +222,17 @@ function renderFolderPanel() {
   f.config.childIds = Array.isArray(f.config.childIds) ? f.config.childIds : [];
 
   const nameInput = document.getElementById('folder-name');
+  const titleEl = document.getElementById('folder-title');
   if (nameInput) {
     nameInput.value = f.config.name || t('folder_default');
     nameInput.readOnly = !_folderEdit;
     nameInput.classList.toggle('editable', _folderEdit);
     nameInput.placeholder = t('folder_name_ph');
+    nameInput.style.display = _folderEdit ? '' : 'none';
+  }
+  if (titleEl) {
+    titleEl.textContent = f.config.name || t('folder_default');
+    titleEl.style.display = _folderEdit ? 'none' : '';
   }
   const editBtn = document.getElementById('folder-edit');
   if (editBtn) {
@@ -228,10 +258,10 @@ function renderFolderPanel() {
 
   const kids = _folderChildren(f);
   if (grid) {
-    const items = kids.map(link => `<div class="folder-item" role="button" tabindex="0" data-id="${link.id}" title="${esc(link.config?.name || '')}">
+    const items = kids.map(link => `<div class="folder-item" role="button" tabindex="0" data-id="${link.id}" draggable="${_folderEdit ? 'true' : 'false'}" title="${esc(link.config?.name || '')}">
       <div class="fi-ico">${folderChildIcon(link.config)}</div>
       <div class="fi-name">${esc(link.config?.name || '')}</div>
-      ${_folderEdit ? `<button class="fi-del" data-del="${link.id}" title="${esc(t('folder_remove_link'))}">×</button>` : ''}
+      ${_folderEdit ? `<button class="fi-del" data-del="${link.id}" draggable="false" title="${esc(t('folder_remove_link'))}">×</button>` : ''}
     </div>`).join('');
     const addTile = _folderEdit
       ? `<button class="folder-add-tile" data-add="1"><span class="fat-plus">＋</span><span>${esc(t('folder_add_new'))}</span></button>`
@@ -260,11 +290,14 @@ function openFolder(id, opts = {}) {
       inp?.focus();
       inp?.select();
     }, 60);
+  } else {
+    _folderBlurName();
   }
 }
 
 function closeFolder() {
   if (_folderEdit) _folderCommitName();
+  _folderBlurName();
   _folderId = null;
   _folderEdit = false;
   _folderPicking = false;
@@ -300,12 +333,15 @@ function initFolderModal() {
       const inp = document.getElementById('folder-name');
       inp?.focus();
       inp?.select();
+    } else {
+      _folderBlurName();
     }
   });
   document.getElementById('folder-done')?.addEventListener('click', () => {
     _folderCommitName();
     _folderEdit = false;
     renderFolderPanel();
+    _folderBlurName();
   });
   document.getElementById('folder-add-new')?.addEventListener('click', _folderAddNewLink);
   document.getElementById('folder-add-existing')?.addEventListener('click', () => {
@@ -354,6 +390,7 @@ function initFolderModal() {
   const grid = document.getElementById('folder-grid');
   _bindFolderIconFallbacks(grid);
   grid?.addEventListener('click', e => {
+    if (Date.now() - _folderDragEndedAt < 350) return;
     const del = e.target.closest('.fi-del');
     if (del) {
       e.stopPropagation();
@@ -375,6 +412,47 @@ function initFolderModal() {
     e.preventDefault();
     _folderActivateItem(item);
   });
+
+  // Reorder links inside the folder (edit mode only). Dragging updates the DOM
+  // order live; dragend writes that order back to config.childIds.
+  grid?.addEventListener('dragstart', e => {
+    const item = e.target.closest?.('.folder-item');
+    if (!item || !_folderEdit || e.target.closest?.('.fi-del')) { e.preventDefault(); return; }
+    _folderDragId = item.dataset.id;
+    item.classList.add('dragging');
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', _folderDragId);
+    }
+  });
+  grid?.addEventListener('dragover', e => {
+    if (!_folderDragId) return;
+    const over = e.target.closest?.('.folder-item');
+    if (!over) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const dragged = grid.querySelector(`.folder-item[data-id="${_folderDragId}"]`);
+    if (!dragged || over === dragged) return;
+    const r = over.getBoundingClientRect();
+    const after = (e.clientX - r.left) > r.width / 2;
+    grid.insertBefore(dragged, after ? over.nextSibling : over);
+    const gr = grid.getBoundingClientRect();
+    if (e.clientY < gr.top + 36) grid.scrollTop -= 14;
+    else if (e.clientY > gr.bottom - 36) grid.scrollTop += 14;
+  });
+  grid?.addEventListener('drop', e => {
+    if (!_folderDragId) return;
+    e.preventDefault();
+    _commitFolderOrder();
+  });
+  grid?.addEventListener('dragend', e => {
+    const item = e.target.closest?.('.folder-item');
+    item?.classList.remove('dragging');
+    if (_folderDragId) _commitFolderOrder();
+    _folderDragId = null;
+    _folderDragEndedAt = Date.now();
+  });
+
   _bindFolderIconFallbacks(document.getElementById('folder-pick-list'));
 
   // The panels' Escape handler closes generic .modal-bg overlays; this keeps

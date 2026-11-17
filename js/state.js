@@ -5,6 +5,7 @@ const DEF_WIDGETS = [
 ];
 const DEF_SETTINGS = {
   theme: 'monet', monetHue: 'lavender', engine: 'google', lang: 'zh',
+  showLabels: false,
   background: { type:'default', value:'', overlay:0, blur:0, brightness:1 }
 };
 
@@ -210,6 +211,8 @@ lang = state.settings.lang || 'zh';
 // being independently min/max clamped into a distorted shape.
 const _bootVc = visibleCols();
 state.widgets.forEach(w => {
+  // Overlay dividers are not grid widgets and carry no w/h.
+  if (w.type === 'divider_h' || w.type === 'divider_v') return;
   clampSize(w, _bootVc);
   if (!ASPECT_LOCK[w.type]) return;
   const ratio = ASPECT_LOCK[w.type];

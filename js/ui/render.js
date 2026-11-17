@@ -8,11 +8,68 @@ var _gridSyncing = false; // ignore change events while loading/column switching
 let _captureTimer = 0;
 // Fallback for GridStack dragstop events that don't carry pointer coordinates.
 let _lastPointer = { x: null, y: null };
-document.addEventListener('pointermove', e => { _lastPointer.x = e.clientX; _lastPointer.y = e.clientY; }, { passive: true });
+// The dragged item while a drag is active; used for the continuous drop cue.
+let _folderDragEl = null;
+let _folderHintRAF = 0;
+document.addEventListener('pointermove', e => {
+  _lastPointer.x = e.clientX;
+  _lastPointer.y = e.clientY;
+  // GridStack's 'drag' event only fires when the grid node changes, not on
+  // every pointer move. Track the pointer ourselves so the "release to merge"
+  // ring appears exactly when the pointer enters the (small) hit zone.
+  if (!_folderDragEl || !_folderMergeArmed || !editMode || _folderHintRAF) return;
+  const x = e.clientX, y = e.clientY;
+  _folderHintRAF = requestAnimationFrame(() => {
+    _folderHintRAF = 0;
+    if (!_folderDragEl || !_folderMergeArmed || !editMode) return;
+    _setFolderDropReady(_folderDragEl, !!_folderDropTarget({ clientX: x, clientY: y }, _folderDragEl));
+  });
+}, { passive: true });
 // Geometry of every widget at dragstart. GridStack reflows/swaps cards during
 // a drag, so at release the icon the user dropped on has usually moved away;
 // the snapshot answers "which icon was under the pointer when the drag began".
 let _dragStartRects = [];
+// Folder-merge hit zone: only the central part of the icon counts, not the
+// whole grid cell (which includes the 48px gap and made merging far too easy).
+const FOLDER_DROP_HIT = 0.62;
+const FOLDER_DROP_MIN = 40;
+
+function _folderPointInRect(cx, cy, width, height, x, y) {
+  const w = Math.max(FOLDER_DROP_MIN, width * FOLDER_DROP_HIT);
+  const h = Math.max(FOLDER_DROP_MIN, height * FOLDER_DROP_HIT);
+  return x >= cx - w / 2 && x <= cx + w / 2 && y >= cy - h / 2 && y <= cy + h / 2;
+}
+
+function _setFolderDropReady(draggedEl, on) {
+  // GridStack versions differ on whether the event target is the grid item or
+  // the inner card; accept both.
+  const card = draggedEl?.classList?.contains('widget')
+    ? draggedEl
+    : draggedEl?.querySelector?.('.widget');
+  if (card) card.classList.toggle('folder-drop-ready', !!on);
+}
+
+// Merge mode is explicit: Alt + drag. GridStack's collision engine swaps
+// widgets live during a drag, so a plain drop on another icon is ambiguous
+// (the target moves away). While merge mode is armed we lock every other grid
+// node so the target stays put and the gesture is deterministic.
+let _folderMergeArmed = false;
+let _mergeLockedNodes = [];
+
+function _setMergeLock(exceptId) {
+  _mergeLockedNodes = [];
+  for (const n of (grid?.engine?.nodes || [])) {
+    const id = n.el?.dataset?.id;
+    if (!id || id === exceptId || n.locked) continue;
+    n.locked = true;
+    _mergeLockedNodes.push(n);
+  }
+}
+
+function _clearMergeLock() {
+  for (const n of _mergeLockedNodes) n.locked = false;
+  _mergeLockedNodes = [];
+}
 
 function saveWCfg(id, cfg, useDebounce = false) {
   const w = state.widgets.find(w=>w.id===id);
@@ -217,27 +274,48 @@ function initGrid() {
   }, canvas);
 
   grid.on('change', () => scheduleCapture());
-  grid.on('dragstart', (_e, el) => {
+  grid.on('dragstart', (event, el) => {
     setCardDragged(el, true);
+    _folderDragEl = el;
+    _clearMergeLock();
+    _folderMergeArmed = !!((event?.altKey || event?.shiftKey) && editMode && el.dataset.type === 'link');
+    if (_folderMergeArmed) _setMergeLock(el.dataset.id);
+    _setFolderDropReady(el, false);
     _dragStartRects = [...document.querySelectorAll('#grid-canvas .grid-stack-item')]
       .map(item => {
         const id = item.dataset.id;
         if (!id) return null;
-        const r = item.getBoundingClientRect();
-        return { id, type: item.dataset.type, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        // Snapshot the visible icon, not the grid cell: the cell includes the
+        // GAP margins, which made the merge hit area far too large.
+        const card = item.querySelector('.widget');
+        const target = card?.querySelector('.lw-fav, .fw-fav') || card || item;
+        const r = target.getBoundingClientRect();
+        return { id, type: item.dataset.type, cx: r.left + r.width / 2, cy: r.top + r.height / 2, width: r.width, height: r.height };
       })
       .filter(Boolean);
   });
+  grid.on('drag', (_e, el) => {
+    // Divider lines live on an overlay; keep them in sync when this widget or
+    // any neighbour is reflowed during the drag.
+    if (typeof renderDividers === 'function') renderDividers();
+  });
   grid.on('dragstop', (event, el) => {
     setTimeout(() => setCardDragged(el, false), 300);
-    // Dropping one icon on another is a folder gesture. It is limited to edit
-    // mode (the phone "jiggle" equivalent) so ordinary reordering in normal
-    // mode can never merge icons by accident.
-    const drop = editMode ? _folderDropTarget(event, el) : null;
+    // Dropping one icon on another is a folder gesture only in explicit merge
+    // mode (Alt held at dragstart), so ordinary reordering can never merge
+    // icons by accident.
+    const armed = _folderMergeArmed && editMode;
+    const drop = armed ? _folderDropTarget(event, el) : null;
+    _folderMergeArmed = false;
+    _clearMergeLock();
+    _folderDragEl = null;
+    if (_folderHintRAF) { cancelAnimationFrame(_folderHintRAF); _folderHintRAF = 0; }
+    _setFolderDropReady(el, false);
     // Only compact if the drop actually produced overlapping nodes. A valid
     // drop is left where the user put it.
     resolveOverlap();
     scheduleCapture();
+    if (typeof renderDividers === 'function') renderDividers();
     if (drop) setTimeout(() => _applyFolderDrop(el.dataset.id, drop.dataset.id), 0);
   });
   grid.on('resizestop', (_e, el) => {
@@ -256,6 +334,7 @@ function initGrid() {
     }
     resolveOverlap();
     scheduleCapture();
+    if (typeof renderDividers === 'function') renderDividers();
   });
   grid.on('added', () => { scheduleCapture(); updateEmptyHint(); });
   grid.on('removed', () => { scheduleCapture(); updateEmptyHint(); });
@@ -277,9 +356,21 @@ function captureLayout() {
   for (const n of nodes) {
     const id = n.id || (n.el && n.el.dataset && n.el.dataset.id);
     if (!id) continue;
-    map[id] = { x: n.x, y: n.y, w: n.w, h: n.h };
+    // grid.save(false) omits w/h when they equal minW/minH (e.g. a 2x1
+    // divider). Read the live node so we never write undefined back into
+    // state and lose the widget size on reload.
+    const item = document.querySelector(`.grid-stack-item[data-id="${id}"]`);
+    const live = item?.gridstackNode;
+    const x = Number.isFinite(live?.x) ? live.x : n.x;
+    const y = Number.isFinite(live?.y) ? live.y : n.y;
+    const ww = Number.isFinite(live?.w) ? live.w : n.w;
+    const hh = Number.isFinite(live?.h) ? live.h : n.h;
+    map[id] = { x, y, w: ww, h: hh };
     const w = state.widgets.find(w => w.id === id);
-    if (w) { w.w = n.w; w.h = n.h; }
+    if (w) {
+      if (Number.isFinite(ww)) w.w = ww;
+      if (Number.isFinite(hh)) w.h = hh;
+    }
   }
   state.gridLayouts[vc] = map;
   state.widgets.sort((a, b) => {
@@ -289,6 +380,8 @@ function captureLayout() {
   });
   debouncedSaveState();
   updateEmptyHint();
+  updateRowDividers();
+  if (typeof renderDividers === 'function') renderDividers();
 }
 
 function layoutHasOverlap() {
@@ -573,7 +666,11 @@ function _folderDropTarget(event, draggedEl) {
   for (const node of document.elementsFromPoint(x, y)) {
     const card = node.closest && node.closest('.widget');
     if (!card || card === draggedEl || draggedEl.contains(card)) continue;
-    return card;
+    const target = card.querySelector('.lw-fav, .fw-fav') || card;
+    const r = target.getBoundingClientRect();
+    if (_folderPointInRect(r.left + r.width / 2, r.top + r.height / 2, r.width, r.height, x, y)) {
+      return card;
+    }
   }
   // GridStack shows its placeholder (and has already swapped the cards) under
   // the pointer at release. Fall back to the geometry captured at dragstart:
@@ -581,11 +678,10 @@ function _folderDropTarget(event, draggedEl) {
   const draggedId = draggedEl?.dataset?.id;
   for (const s of _dragStartRects) {
     if (s.id === draggedId) continue;
-    if (x >= s.left && x <= s.right && y >= s.top && y <= s.bottom) {
-      const item = document.querySelector(`.grid-stack-item[data-id="${s.id}"]`);
-      const card = item?.querySelector('.widget');
-      if (card) return card;
-    }
+    if (!_folderPointInRect(s.cx, s.cy, s.width, s.height, x, y)) continue;
+    const item = document.querySelector(`.grid-stack-item[data-id="${s.id}"]`);
+    const card = item?.querySelector('.widget');
+    if (card) return card;
   }
   return null;
 }
@@ -601,9 +697,9 @@ function _applyFolderDrop(srcId, tgtId) {
       if (typeof refreshFolderPanel === 'function') refreshFolderPanel();
     }
   } else if (src.type === 'link' && tgt.type === 'link') {
-    // The source is at the drop point after GridStack's swap, so put the new
-    // folder there rather than at the target's post-swap slot.
-    const item = document.querySelector(`.grid-stack-item[data-id="${srcId}"]`);
+    // Merges run with every other node locked, so the target is still in the
+    // cell the user dropped on. Put the folder there (the target's slot).
+    const item = document.querySelector(`.grid-stack-item[data-id="${tgtId}"]`);
     const node = item?.gridstackNode;
     const pos = node ? { x: node.x, y: node.y, w: node.w, h: node.h } : null;
     const fid = createFolderFromLinks(tgtId, srcId, pos);
@@ -680,6 +776,8 @@ function renderAll() {
   state.widgets.forEach(w => {
     // Filed links live inside folders; the folder tile renders their icons.
     if (w.type === 'link' && filed.has(w.id)) return;
+    // Overlay dividers are not GridStack items.
+    if (w.type === 'divider_h' || w.type === 'divider_v') return;
     clampSize(w, vc);
     const item = makeWidget(w);
     if (!item) return;
@@ -708,11 +806,31 @@ function renderAll() {
   if (editMode) buildGridBg();
 }
 
+// A subtle separator after every 4 grid rows. Pitch is the real GridStack
+// cell pitch (content + gap), so the line lands in the middle of the gap.
+function updateRowDividers() {
+  const canvas = document.getElementById('grid-canvas');
+  const host = document.getElementById('row-dividers');
+  if (!canvas || !host) return;
+  const pitch = readGeom().colW + GAP;
+  if (!(pitch > 0)) return;
+  const rows = Math.floor(canvas.offsetHeight / pitch);
+  const frag = document.createDocumentFragment();
+  for (let r = 4; r < rows; r += 4) {
+    const el = document.createElement('div');
+    el.className = 'row-divider';
+    el.style.top = `${r * pitch}px`;
+    frag.appendChild(el);
+  }
+  host.replaceChildren(frag);
+}
+
 function updateEmptyHint() {
   // Filed links are in state.widgets but not on the grid — use the DOM so an
   // all-filed dashboard still shows the empty hint when no folders exist.
   const visible = document.querySelectorAll('#grid-canvas .widget').length;
-  document.getElementById('empty-hint').style.opacity = visible ? '0' : '1';
+  const hasDivider = state.widgets.some(w => w.type === 'divider_h' || w.type === 'divider_v');
+  document.getElementById('empty-hint').style.opacity = (visible || hasDivider) ? '0' : '1';
 }
 
 // Column changes are handled explicitly so each column count has its own
@@ -727,6 +845,8 @@ function scheduleReflow() {
     if (vc === gridCols) {
       // Same column count, new cell width (e.g. window drag/zoom).
       grid.cellHeight('auto');
+      updateRowDividers();
+      if (typeof renderDividers === 'function') renderDividers();
       return;
     }
     captureLayout();
@@ -746,4 +866,8 @@ window.addEventListener('beforeunload', () => clearTimeout(resizeTimer), { once:
 if (typeof ResizeObserver !== 'undefined') {
   const gridOuterEl = document.getElementById('grid-outer');
   if (gridOuterEl) new ResizeObserver(scheduleReflow).observe(gridOuterEl);
+  // GridStack sets the canvas height asynchronously after adding/removing
+  // widgets; redraw the 4-row separators when it settles.
+  const gridCanvasEl = document.getElementById('grid-canvas');
+  if (gridCanvasEl) new ResizeObserver(() => updateRowDividers()).observe(gridCanvasEl);
 }

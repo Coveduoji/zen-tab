@@ -47,7 +47,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) errors.push('console: ' + msg.text()); });
 
-await page.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+await page.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
 
 const base = await page.evaluate(() => ({
@@ -288,7 +288,7 @@ console.log('after resize', {
 });
 
 // Reload and confirm persistence
-await page.reload({ waitUntil: 'load' });
+await page.reload({ waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
 await page.waitForTimeout(450);
 console.log('after reload', await page.evaluate(() => {
@@ -333,9 +333,9 @@ const cspErrors = [];
 const cspPage = await context.newPage();
 cspPage.on('pageerror', e => cspErrors.push('pageerror: ' + e.message));
 cspPage.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) cspErrors.push('console: ' + msg.text()); });
-await cspPage.goto(`http://127.0.0.1:${port}/dist/newtab.html?csp=1`, { waitUntil: 'load' });
+await cspPage.goto(`http://127.0.0.1:${port}/dist/newtab.html?csp=1`, { waitUntil: 'domcontentloaded' });
 await cspPage.evaluate(() => localStorage.setItem('dash_theme', JSON.stringify({ theme: 'light', hue: 'lavender', hasBg: false })));
-await cspPage.reload({ waitUntil: 'load' });
+await cspPage.reload({ waitUntil: 'domcontentloaded' });
 await cspPage.waitForTimeout(300);
 console.log('csp theme-init', await cspPage.evaluate(() => ({
   theme: document.documentElement.getAttribute('data-theme'),
@@ -358,7 +358,7 @@ await migPage.addInitScript(() => {
     settings: { theme: 'monet', monetHue: 'lavender', engine: 'google', lang: 'zh', background: { type: 'default', value: '', overlay: 0, blur: 0, brightness: 1 } },
   }));
 });
-await migPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+await migPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
 await migPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
 await migPage.waitForTimeout(300);
 console.log('order migration', await migPage.evaluate(() => {
@@ -371,7 +371,7 @@ await migCtx.close();
 // is near/over the localStorage quota.
 const bgCtx = await browser.newContext();
 const bgPage = await bgCtx.newPage();
-await bgPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+await bgPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
 await bgPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
 const bgBlobSize = await bgPage.evaluate(async () => {
   const c = document.createElement('canvas');
@@ -399,7 +399,7 @@ const bgNow = await bgPage.evaluate(async () => ({
   placeholder: JSON.parse(localStorage.getItem('dash_v3') || '{}').settings?.background?.value,
   layer: (document.getElementById('bg-layer').style.backgroundImage || '').length,
 }));
-await bgPage.reload({ waitUntil: 'load' });
+await bgPage.reload({ waitUntil: 'domcontentloaded' });
 // The image is applied asynchronously once IndexedDB resolves.
 await bgPage.waitForFunction(
   () => (document.getElementById('bg-layer').style.backgroundImage || '').length > 1000,
@@ -425,7 +425,7 @@ await bgCtx.close();
   const iconCtx = await browser.newContext();
   const iconPage = await iconCtx.newPage();
   iconPage.on('pageerror', e => errors.push('icon pageerror: ' + e.message));
-  await iconPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+  await iconPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
   await iconPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
   await iconPage.evaluate(() => document.getElementById('fab-add').click());
   await iconPage.locator('.mkt-item[data-t="link"] .mkt-add').click();
@@ -469,7 +469,7 @@ await bgCtx.close();
       errors.push('folder console: ' + msg.text());
     }
   });
-  await folderPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'load' });
+  await folderPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
   await folderPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
 
   // Three unfiled links; one more (wl1) comes from the default state.
@@ -509,6 +509,12 @@ await bgCtx.close();
   await folderPage.evaluate(() => document.getElementById('link-save').click());
   await folderPage.waitForTimeout(300);
 
+  const folderStyle = await folderPage.evaluate(() => {
+    const el = document.querySelector('.widget[data-type="folder"] .fw-fav');
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { backdrop: cs.backdropFilter || cs.webkitBackdropFilter, bg: cs.backgroundColor };
+  });
   const folderState = await folderPage.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
     const f = (s.widgets || []).find(w => w.type === 'folder');
@@ -520,6 +526,25 @@ await bgCtx.close();
       gridLinks: document.querySelectorAll('#grid-canvas .widget[data-type="link"]').length,
       previewCells: [...document.querySelectorAll('.widget[data-type="folder"] .fw-cell')]
         .filter(c => c.textContent.trim() || c.querySelector('img')).length,
+    };
+  });
+
+  // In-folder drag reorder: move the first icon after the last one.
+  const folderReorder = await folderPage.evaluate(() => {
+    const grid = document.getElementById('folder-grid');
+    const items = [...grid.querySelectorAll('.folder-item')];
+    const first = items[0], last = items[items.length - 1];
+    const dt = new DataTransfer();
+    const r = last.getBoundingClientRect();
+    first.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    last.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.right - 2, clientY: r.top + r.height / 2 }));
+    first.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const f = (s.widgets || []).find(w => w.type === 'folder');
+    const byId = new Map((s.widgets || []).filter(w => w.type === 'link').map(w => [w.id, w.config.name]));
+    return {
+      kids: f.config.childIds.map(id => byId.get(id)),
+      dom: [...grid.querySelectorAll('.folder-item .fi-name')].map(e => e.textContent),
     };
   });
 
@@ -549,7 +574,7 @@ await bgCtx.close();
   }));
 
   // Reload: folder and filed links persist; filed links stay off the grid.
-  await folderPage.reload({ waitUntil: 'load' });
+  await folderPage.reload({ waitUntil: 'domcontentloaded' });
   await folderPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
   await folderPage.waitForTimeout(300);
   const persisted = await folderPage.evaluate(() => {
@@ -588,8 +613,15 @@ await bgCtx.close();
     };
   });
 
-  console.log('folder', { folderOpen, folderState, normalOpen, launched, persisted, moved, deleted });
+  console.log('folder', { folderOpen, folderStyle, folderState, folderReorder, normalOpen, launched, persisted, moved, deleted });
   if (!folderOpen.open || !folderOpen.editing) errors.push('folder editor did not open');
+  if (!(folderReorder.kids.join(',') === 'Beta,Gamma,Alpha' &&
+        folderReorder.dom.join(',') === 'Beta,Gamma,Alpha')) {
+    errors.push('in-folder drag reorder failed');
+  }
+  if (!folderStyle || !String(folderStyle.backdrop).includes('blur')) {
+    errors.push('folder tile is not frosted glass');
+  }
   if (!(folderState.name === 'Work' && folderState.kids === 3 &&
         folderState.kidNames.join(',') === 'Alpha,Beta,Gamma' &&
         folderState.gridLinks === 2 && folderState.previewCells === 3)) {
@@ -603,6 +635,177 @@ await bgCtx.close();
   if (!(moved.kids === 2 && moved.gridLinks === 3)) errors.push('moving a link out of a folder failed');
   if (!(deleted.folders === 0 && deleted.gridLinks === deleted.links)) errors.push('deleting a folder did not release its links');
   await folderCtx.close();
+}
+
+// Show Labels: link/folder names appear under the icons and the setting
+// survives a reload.
+{
+  const labelCtx = await browser.newContext();
+  const labelPage = await labelCtx.newPage();
+  labelPage.on('pageerror', e => errors.push('labels pageerror: ' + e.message));
+  labelPage.on('console', msg => {
+    if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) {
+      errors.push('labels console: ' + msg.text());
+    }
+  });
+  await labelPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
+  await labelPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await labelPage.evaluate(() => document.getElementById('fab-settings').click());
+  await labelPage.waitForTimeout(300);
+  await labelPage.evaluate(() => {
+    const el = document.getElementById('s-labels');
+    el.checked = true;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await labelPage.waitForTimeout(200);
+  const labelsOn = await labelPage.evaluate(() => ({
+    saved: JSON.parse(localStorage.getItem('dash_v3') || '{}').settings?.showLabels,
+    body: document.body.classList.contains('show-labels'),
+    linkLabel: getComputedStyle(document.querySelector('.lw-name')).display,
+  }));
+  await labelPage.evaluate(() => document.getElementById('settings-close').click());
+  await labelPage.reload({ waitUntil: 'domcontentloaded' });
+  await labelPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await labelPage.waitForTimeout(300);
+  const labelsPersist = await labelPage.evaluate(() => ({
+    body: document.body.classList.contains('show-labels'),
+    linkLabel: getComputedStyle(document.querySelector('.lw-name')).display,
+  }));
+  console.log('labels', { labelsOn, labelsPersist });
+  if (!(labelsOn.saved === true && labelsOn.body && labelsOn.linkLabel === 'block' &&
+        labelsPersist.body && labelsPersist.linkLabel === 'block')) {
+    errors.push('show-labels setting did not apply/persist');
+  }
+  await labelCtx.close();
+}
+
+// Every 4 grid rows gets a separator, positioned on the real grid pitch.
+{
+  const rowCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const rowPage = await rowCtx.newPage();
+  rowPage.on('pageerror', e => errors.push('rows pageerror: ' + e.message));
+  await rowPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
+  await rowPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await rowPage.evaluate(() => document.getElementById('fab-settings').click());
+  await rowPage.waitForTimeout(250);
+  const many = Array.from({ length: 40 }, (_, i) => `R${i},https://r${i}.example`).join('\n');
+  await rowPage.locator('#s-bulk-links').fill(many);
+  await rowPage.evaluate(() => document.getElementById('s-bulk-add').click());
+  await rowPage.waitForTimeout(600);
+  await rowPage.evaluate(() => document.getElementById('settings-close').click());
+  await rowPage.waitForTimeout(400);
+  await rowPage.waitForFunction(() => document.querySelectorAll('.row-divider').length > 0, null, { timeout: 5000 }).catch(() => {});
+  const rows = await rowPage.evaluate(() => {
+    const canvas = document.getElementById('grid-canvas');
+    const cols = parseInt((canvas.className.match(/gs-(\d+)/) || [])[1] || '0', 10);
+    const pitch = cols ? canvas.getBoundingClientRect().width / cols : 0;
+    return {
+      widgets: document.querySelectorAll('#grid-canvas .widget').length,
+      dividers: [...document.querySelectorAll('#row-dividers .row-divider')].map(e => parseFloat(e.style.top)),
+      pitch,
+    };
+  });
+  console.log('row dividers', rows);
+  const dividersOk = rows.dividers.length >= 1 && rows.pitch > 0 &&
+    rows.dividers.every((top, i) => Math.abs(top - (i + 1) * 4 * rows.pitch) < 2);
+  if (!dividersOk) errors.push('4-row dividers are missing or misaligned');
+  await rowCtx.close();
+}
+
+// Divider components: add horizontal + vertical overlays from the marketplace,
+// shorten the horizontal via its endpoint handle, and confirm the config
+// survives a reload. Overlay dividers must never become grid items.
+{
+  const divCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const divPage = await divCtx.newPage();
+  divPage.on('pageerror', e => errors.push('divider pageerror: ' + e.message));
+  divPage.on('console', msg => {
+    if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) {
+      errors.push('divider console: ' + msg.text());
+    }
+  });
+  await divPage.goto(`http://127.0.0.1:${port}/dist/newtab.html`, { waitUntil: 'domcontentloaded' });
+  await divPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  for (const t of ['divider_h', 'divider_v']) {
+    await divPage.evaluate(() => document.getElementById('fab-add').click());
+    await divPage.waitForTimeout(250);
+    await divPage.locator(`.mkt-item[data-t="${t}"] .mkt-add`).click();
+    await divPage.waitForTimeout(450);
+  }
+  const made = await divPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const divs = (s.widgets || []).filter(w => w.type === 'divider_h' || w.type === 'divider_v');
+    return {
+      entries: divs.length,
+      types: divs.map(w => w.type),
+      gridTypes: [...document.querySelectorAll('#grid-canvas .grid-stack-item')].map(e => e.dataset.type),
+      lines: document.querySelectorAll('#divider-layer .divider-line').length,
+      corners: document.querySelectorAll('#divider-layer .divider-corner').length,
+      handles: document.querySelectorAll('#divider-layer .divider-svg-handle').length,
+      removes: document.querySelectorAll('#divider-layer .divider-svg-remove').length,
+      edit: document.body.classList.contains('edit-mode'),
+    };
+  });
+
+  const before = await divPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    return (s.widgets || []).find(w => w.type === 'divider_h')?.config || null;
+  });
+  const hb = await divPage.evaluate(() => {
+    const hs = [...document.querySelectorAll('#divider-layer .divider-svg-handle[data-orient="h"]')];
+    if (!hs.length) return null;
+    hs.sort((a, b) => Number(a.getAttribute('cx')) - Number(b.getAttribute('cx')));
+    const el = hs[hs.length - 1];
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
+  const pitch = await divPage.evaluate(() => {
+    const c = document.getElementById('grid-canvas');
+    const cols = parseInt((c.className.match(/gs-(\d+)/) || [])[1] || '8', 10);
+    return c.getBoundingClientRect().width / cols;
+  });
+  let resized = null;
+  if (hb && pitch > 0) {
+    await divPage.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await divPage.mouse.down();
+    await divPage.mouse.move(hb.x + hb.width / 2 - pitch, hb.y + hb.height / 2, { steps: 10 });
+    await divPage.mouse.up();
+    await divPage.waitForTimeout(700);
+    resized = await divPage.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+      return (s.widgets || []).find(w => w.type === 'divider_h')?.config || null;
+    });
+  }
+
+  await divPage.reload({ waitUntil: 'domcontentloaded' });
+  await divPage.waitForSelector('#grid-canvas .widget', { timeout: 5000 });
+  await divPage.waitForTimeout(500);
+  const reloaded = await divPage.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('dash_v3') || '{}');
+    const divs = (s.widgets || []).filter(w => w.type === 'divider_h' || w.type === 'divider_v');
+    return {
+      entries: divs.length,
+      h: (s.widgets || []).find(w => w.type === 'divider_h')?.config || null,
+      lines: document.querySelectorAll('#divider-layer .divider-line').length,
+      gridDivs: document.querySelectorAll('#grid-canvas .grid-stack-item[data-type^="divider"]').length,
+    };
+  });
+
+  console.log('dividers', { made, before, resized, reloaded });
+  if (!(made.entries === 2 && made.types.includes('divider_h') && made.types.includes('divider_v') &&
+        !made.gridTypes.some(t => String(t).startsWith('divider')) &&
+        made.lines === 2 && made.corners >= 1 && made.handles === 4 && made.removes === 2 && made.edit)) {
+    errors.push('overlay dividers were not added/connected/rendered correctly');
+  }
+  if (!(before && resized && Number.isFinite(before.x2) && resized.x2 === before.x2 - 1 &&
+        resized.x1 === before.x1 && resized.y1 === before.y1)) {
+    errors.push('divider endpoint resize failed');
+  }
+  if (!(reloaded.entries === 2 && reloaded.gridDivs === 0 && reloaded.lines === 2 &&
+        reloaded.h && resized && reloaded.h.x2 === resized.x2 && reloaded.h.x1 === resized.x1)) {
+    errors.push('divider config did not persist across reload');
+  }
+  await divCtx.close();
 }
 
 console.log('errors', errors.length ? errors : 'none');

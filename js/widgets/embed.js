@@ -176,34 +176,36 @@ reg({ type:'embed', get name(){return t('w_embed');}, get desc(){return t('w_emb
  */
 function showEmbedModal(currentUrl, onSave) {
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:2100;background:var(--modal-overlay);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2100;background:rgba(8,10,18,.46);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);display:flex;align-items:center;justify-content:center';
 
   const box = document.createElement('div');
-  box.style.cssText = 'background:var(--card);border:1.5px solid var(--card-border);border-radius:16px;padding:24px;width:min(420px,90vw);box-shadow:0 32px 80px rgba(0,0,0,.5)';
+  box.style.cssText = 'background:var(--surface-glass);border:1px solid var(--border);border-radius:24px;padding:26px;width:min(420px,92vw);box-shadow:0 28px 90px rgba(0,0,0,.48),0 4px 16px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.14);backdrop-filter:blur(30px) saturate(1.55);-webkit-backdrop-filter:blur(30px) saturate(1.55);animation:cmdIn .18s var(--ease)';
 
   const titleEl = document.createElement('div');
-  titleEl.style.cssText = 'font-size:.9rem;font-weight:700;margin-bottom:14px';
+  titleEl.style.cssText = 'font-size:1rem;font-weight:700;letter-spacing:-.01em;margin-bottom:16px';
   titleEl.textContent = t('embed_modal_title');
 
   const lblEl = document.createElement('div');
-  lblEl.style.cssText = 'font-size:.75rem;color:var(--text-muted);margin-bottom:6px';
+  lblEl.style.cssText = 'font-size:.64rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:7px';
   lblEl.textContent = t('embed_url_label');
 
   const inp = document.createElement('input');
   inp.type = 'url';
   inp.placeholder = t('embed_placeholder');
   inp.value = currentUrl || '';
-  inp.style.cssText = 'width:100%;padding:9px 12px;border-radius:9px;border:1.5px solid var(--card-border);background:var(--bg2);color:var(--text);font-family:var(--mono);font-size:.8rem;outline:none;box-sizing:border-box';
+  inp.style.cssText = 'width:100%;height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;box-sizing:border-box;transition:border-color .18s,box-shadow .18s';
+  inp.addEventListener('focus', () => { inp.style.borderColor = 'var(--accent)'; inp.style.boxShadow = '0 0 0 3px rgba(124,106,245,.16)'; });
+  inp.addEventListener('blur', () => { inp.style.borderColor = 'var(--border)'; inp.style.boxShadow = 'none'; });
 
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:8px;margin-top:16px;justify-content:flex-end';
+  row.style.cssText = 'display:flex;gap:10px;margin-top:20px;justify-content:flex-end';
 
   const cancelBtn = document.createElement('button');
-  cancelBtn.style.cssText = 'padding:7px 16px;border-radius:9px;border:1.5px solid var(--card-border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:.8rem';
+  cancelBtn.className = 'btn-s';
   cancelBtn.textContent = t('cancel');
 
   const saveBtn = document.createElement('button');
-  saveBtn.style.cssText = 'padding:7px 16px;border-radius:9px;border:none;background:var(--accent);color:var(--text-on-accent);cursor:pointer;font-size:.8rem;font-weight:600';
+  saveBtn.className = 'btn-p';
   saveBtn.textContent = t('embed_save_btn');
 
   row.append(cancelBtn, saveBtn);

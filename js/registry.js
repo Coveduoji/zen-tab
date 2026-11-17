@@ -8,6 +8,8 @@ const CATALOG = [
   {type:'clock',   cat:'basic'},
   {type:'link',    cat:'basic'},
   {type:'folder',  cat:'basic'},
+  {type:'divider_h', cat:'basic'},
+  {type:'divider_v', cat:'basic'},
   {type:'notes',   cat:'basic'},
   {type:'weather', cat:'info'},
   {type:'gtrend',  cat:'info'},
